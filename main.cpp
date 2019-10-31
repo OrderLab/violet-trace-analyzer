@@ -20,11 +20,11 @@ T s2f(const std::string &s) {
     return r;
 }
 
-class function_trace{
-    public:
-        std::string function;
-        std::string execution_time;
-        std::string caller;
+class function_trace {
+public:
+    std::string function;
+    std::string execution_time;
+    std::string caller;
 
     function_trace() {
     }
@@ -37,7 +37,7 @@ class function_trace{
         execution_time = latency;
     }
 
-    bool isEqual(const function_trace& rhs) const {
+    bool isEqual(const function_trace &rhs) const {
         return function == rhs.function;
     }
 
@@ -45,11 +45,11 @@ class function_trace{
         return s2f<double>(execution_time) < 5000;
     }
 
-    friend bool operator==(const function_trace& lhs, const function_trace& rhs) {
+    friend bool operator==(const function_trace &lhs, const function_trace &rhs) {
         return lhs.isEqual(rhs);
     }
 
-    friend std::ostream &operator << (std::ostream &o, const function_trace &t) {
+    friend std::ostream &operator<<(std::ostream &o, const function_trace &t) {
         return o << t.function << " " << t.execution_time << "ms";
     }
 
@@ -63,20 +63,31 @@ struct stateRecord {
     std::vector<function_trace> trace;
 };
 
-static void showStats (std::string fp1, std::string fp2);
-static void unifiedDiff (std::vector<function_trace> sequence1, std::vector<function_trace> sequence2,std::ofstream& parsed_log);
-void countCost(std::ifstream& parsed_log);
-bool is_caseResult(std::string line);
-size_t getPosition(std::string filter,const std::string *line);
-int get_stateId(const std::string *line);
-std::string get_count(const std::string *line,std::string name);
-std::string get_address(const std::string *line,std::string name);
-std::string get_execution_time(const std::string *line,std::string name);
-std::string get_count_base(const std::string *line,std::string name, char separator);
+static void showStats(std::string fp1, std::string fp2);
 
-int main(int argc, char** argv) {
+static void
+unifiedDiff(std::vector<function_trace> sequence1, std::vector<function_trace> sequence2, std::ofstream &parsed_log);
+
+void countCost(std::ifstream &parsed_log);
+
+bool is_caseResult(std::string line);
+
+size_t getPosition(std::string filter, const std::string *line);
+
+int get_stateId(const std::string *line);
+
+std::string get_count(const std::string *line, std::string name);
+
+std::string get_address(const std::string *line, std::string name);
+
+std::string get_execution_time(const std::string *line, std::string name);
+
+std::string get_count_base(const std::string *line, std::string name, char separator);
+void create_critical_path(int state, stateRecord state_record,std::ofstream *parsed_log);
+
+int main(int argc, char **argv) {
     std::string line;
-    char* log_path;
+    char *log_path;
     std::string expression = "LatencyTracker: Function";
     std::map<int, stateRecord> cost_table;
 
@@ -89,9 +100,9 @@ int main(int argc, char** argv) {
     std::ifstream s2e_log(log_path);
 
     if (s2e_log.is_open()) {
-        while (s2e_log.good()){
+        while (s2e_log.good()) {
             int id;
-            getline (s2e_log,line);
+            getline(s2e_log, line);
             if (is_caseResult(line)) {
                 id = get_stateId(&line);
                 int instructions = stoi(get_count(&line, "instruction"));
@@ -105,7 +116,7 @@ int main(int argc, char** argv) {
                     cost_table[id] = record;
                 } else {
                     assert(cost_table.count(id) == 1);
-                    struct stateRecord& record = cost_table[id];
+                    struct stateRecord &record = cost_table[id];
                     assert(record.syscall_count == 0);
                     assert(record.instruction_count == 0);
                     record.syscall_count = syscalls;
@@ -113,7 +124,7 @@ int main(int argc, char** argv) {
                 }
             }
 
-            if (line.find(expression)!= std::string::npos) {
+            if (line.find(expression) != std::string::npos) {
                 id = get_stateId(&line);
                 function_trace function_trace;
                 std::string function = get_address(&line, "Function");
@@ -138,9 +149,7 @@ int main(int argc, char** argv) {
                     cost_table[id] = record;
                 } else {
                     assert(cost_table.count(id) == 1);
-                    struct stateRecord& record = cost_table[id];
-                    record.syscall_count = 0;
-                    record.instruction_count = 0;
+                    struct stateRecord &record = cost_table[id];
                     record.id = id;
                     if (function_trace.caller == "0x0") {
                         record.execution_time += s2f<double>(function_trace.execution_time);
@@ -155,16 +164,14 @@ int main(int argc, char** argv) {
     }
     std::ofstream parsed_log;
     parsed_log.open("result-compare.log");
-    for (auto record_iterator=cost_table.begin(); record_iterator!=cost_table.end(); ++record_iterator) {
-        parsed_log << record_iterator->first << " => the instruction is " << record_iterator->second.instruction_count << ",the syscall is " << record_iterator->second.syscall_count
-                   << ", the execution time " << record_iterator->second.execution_time <<"ms\n";
-        for (std::vector<function_trace>::iterator function_trace = record_iterator->second.trace.begin();function_trace != record_iterator->second.trace.end();function_trace++){
-            if (s2f<double>(function_trace->execution_time) >100) {
-                parsed_log << "Function " << function_trace->function << ", caller " << function_trace->caller << ", execution time " << function_trace->execution_time <<"\n";
-            }
-        }
+    for (auto record_iterator = cost_table.begin(); record_iterator != cost_table.end(); ++record_iterator) {
+        parsed_log << record_iterator->first << " => the number of instruction is "
+                   << record_iterator->second.instruction_count << ",the number of syscall is "
+                   << record_iterator->second.syscall_count
+                   << ", the total execution time " << record_iterator->second.execution_time << "ms\n";
+        create_critical_path(record_iterator->first,record_iterator->second,&parsed_log);
     }
-        
+
 
 //    if (s2e_log.is_open()) {
 //        std::vector<function_trace> sequence1;
@@ -211,22 +218,32 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-std::string get_execution_time(const std::string *line,std::string name){
-    return get_count_base(line,name,';');
+void create_critical_path(int state, stateRecord state_record,std::ofstream *parsed_log) {
+    for (std::vector<function_trace>::iterator function_trace = state_record.trace.begin();
+         function_trace != state_record.trace.end(); function_trace++) {
+        if (s2f<double>(function_trace->execution_time) > 0.1) {
+            (*parsed_log) << "Function " << function_trace->function << ", caller " << function_trace->caller
+                       << ", execution time " << function_trace->execution_time << "\n";
+        }
+    }
 }
 
-std::string get_address(const std::string *line,std::string name){
-    return get_count_base(line,name,';');
+std::string get_execution_time(const std::string *line, std::string name) {
+    return get_count_base(line, name, ';');
 }
 
-std::string get_count(const std::string *line,std::string name){
-    return get_count_base(line,name,';');
+std::string get_address(const std::string *line, std::string name) {
+    return get_count_base(line, name, ';');
 }
 
-std::string get_count_base(const std::string *line,std::string name, char separator){
+std::string get_count(const std::string *line, std::string name) {
+    return get_count_base(line, name, ';');
+}
+
+std::string get_count_base(const std::string *line, std::string name, char separator) {
     size_t position;
     std::string token;
-    position = getPosition(name ,line) + name.length() + 1;
+    position = getPosition(name, line) + name.length() + 1;
     std::stringstream stream(line->substr(position));
     getline(stream, token, separator);
     return token;
@@ -236,7 +253,7 @@ int get_stateId(const std::string *line) {
     size_t position;
     std::string token;
     std::string probe = "State";
-    position = getPosition(probe ,line) + probe.length() + 1;
+    position = getPosition(probe, line) + probe.length() + 1;
     std::stringstream stream(line->substr(position));
     getline(stream, token, ']');
     return stoi(token);
@@ -244,13 +261,13 @@ int get_stateId(const std::string *line) {
 
 bool is_caseResult(std::string line) {
     std::string expression = "TestCaseGenerator: generating test case at address";
-    if (line.find(expression)!= std::string::npos)
+    if (line.find(expression) != std::string::npos)
         return true;
     else
         return false;
 }
 
-size_t getPosition(std::string filter,const std::string *line) {
+size_t getPosition(std::string filter, const std::string *line) {
     size_t found = line->find(filter);
     if (found == std::string::npos)
         std::cout << "Can not find <" << filter << "> in line <" << line << ">\n";
@@ -261,7 +278,7 @@ size_t getPosition(std::string filter,const std::string *line) {
 /*
 * Count the cost
 */
-void countCost(std::ifstream& count_log) {
+void countCost(std::ifstream &count_log) {
     int inc_cost = 0;
     int des_cost = 0;
     std::string line;
@@ -272,20 +289,21 @@ void countCost(std::ifstream& count_log) {
         int cnt = 0;
         while (getline(stream, token, ' ')) {
             if (cnt == 1 && line.front() == '+')
-                inc_cost +=s2f<double>(token);
+                inc_cost += s2f<double>(token);
             if (cnt == 1 && line.front() == '-')
-                des_cost +=s2f<double>(token);
+                des_cost += s2f<double>(token);
             cnt++;
         }
     }
 
-    std::cout << "when autocommit = 1, the cost is " <<inc_cost << "ms\n";
-    std::cout << "when autocommit = 0, the cost is " <<des_cost << "ms\n";
+    std::cout << "when autocommit = 1, the cost is " << inc_cost << "ms\n";
+    std::cout << "when autocommit = 0, the cost is " << des_cost << "ms\n";
 
 }
 
-static void unifiedDiff (std::vector<function_trace> sequence1, std::vector<function_trace> sequence2, std::ofstream& parsed_log) {
-    dtl::Diff< function_trace, std::vector<function_trace> > diff(sequence1,sequence2);
+static void
+unifiedDiff(std::vector<function_trace> sequence1, std::vector<function_trace> sequence2, std::ofstream &parsed_log) {
+    dtl::Diff<function_trace, std::vector<function_trace> > diff(sequence1, sequence2);
     diff.onHuge();
     diff.compose();
 
