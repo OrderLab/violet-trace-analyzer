@@ -86,12 +86,12 @@ namespace dtl {
                     case SES_ADD:
                         this->out_ << SES_MARK_ADD  << se.first << endl;
                         break;
-                     case SES_DELETE:
+                    case SES_DELETE:
                         this->out_ << SES_MARK_DELETE << se.first << endl;
                         break;
-                        //case SES_COMMON:
-                        // this->out_ << SES_MARK_COMMON << se.first << endl;
-                        //  break;
+//                    case SES_COMMON:
+//                        this->out_ << SES_MARK_COMMON << se.first << endl;
+//                        break;
                 }
             }
 
