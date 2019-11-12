@@ -6,7 +6,6 @@
 #include <sstream>
 #include <assert.h>
 
-
 using dtl::Diff;
 using dtl::elemInfo;
 using dtl::uniHunk;
@@ -26,6 +25,8 @@ public:
     std::string execution_time;
     double diff_execution;
     std::string caller;
+    std::string activityId;
+    std::string parentId;
     bool diff_flag;
 
     function_trace() {
@@ -53,7 +54,7 @@ public:
     }
 
     friend std::ostream &operator<<(std::ostream &o, const function_trace &t) {
-        return o << "; Function "<<t.function << "; runs " << t.execution_time;
+        return o << "; Function " << t.function << "; runs " << t.execution_time;
     }
 };
 
@@ -66,10 +67,9 @@ struct stateRecord {
     std::vector<function_trace> diff_trace;
 };
 
-static void showStats(std::string fp1, std::string fp2);
-
 static void
-unifiedDiff(std::vector<function_trace> original_trace, std::vector<function_trace> changed_trace, std::ofstream &parsed_log);
+unifiedDiff(std::vector<function_trace> original_trace, std::vector<function_trace> changed_trace,
+            std::ofstream &parsed_log);
 
 void countCost(std::ifstream &parsed_log);
 
@@ -86,9 +86,14 @@ std::string get_address(const std::string *line, std::string name);
 std::string get_execution_time(const std::string *line, std::string name);
 
 std::string get_count_base(const std::string *line, std::string name, char separator);
-void create_critical_path(int state, stateRecord state_record,std::ofstream *parsed_log);
+
+void create_critical_path(int state, stateRecord state_record, std::ofstream *parsed_log);
+
 void diffTrace(std::map<int, stateRecord> *cost_table);
+
 bool get_diff(const std::string *line);
+
+void generateTestCases(std::map<int, stateRecord> *cost_table);
 
 int main(int argc, char **argv) {
     std::string line;
@@ -132,12 +137,11 @@ int main(int argc, char **argv) {
             if (line.find(expression) != std::string::npos) {
                 id = get_stateId(&line);
                 function_trace function_trace;
-                std::string function = get_address(&line, "Function");
-                std::string parent = get_address(&line, "caller");
-                std::string execution = get_execution_time(&line, "runs");
-                function_trace.function = function;
-                function_trace.caller = parent;
-                function_trace.execution_time = execution;
+                function_trace.activityId = get_address(&line, "activityId");
+                function_trace.parentId = get_address(&line, "parentId");
+                function_trace.function = get_address(&line, "Function");
+                function_trace.caller = get_address(&line, "caller");
+                function_trace.execution_time = get_execution_time(&line, "runs");
                 if (!cost_table.count(id)) {
                     struct stateRecord record;
                     record.syscall_count = 0;
@@ -167,32 +171,44 @@ int main(int argc, char **argv) {
         std::cout << "Unable to open file at " << log_path << "\n";
     }
 
-
-    std::ofstream parsed_log;
-    parsed_log.open("temp.log");
-
-
-
-    unifiedDiff(cost_table[0].trace,cost_table[1].trace,parsed_log);
-    parsed_log.close();
-
-    diffTrace(&cost_table);
-    std::ofstream result;
-    result.open("result-compare.log");
-    for (auto record_iterator = cost_table.begin(); record_iterator != cost_table.end(); ++record_iterator) {
-        result << "[State "<<record_iterator->first << "] => the number of instruction is "
-                   << record_iterator->second.instruction_count << ",the number of syscall is "
-                   << record_iterator->second.syscall_count
-                   << ", the total execution time " << record_iterator->second.execution_time << "ms\n";
-        create_critical_path(record_iterator->first,record_iterator->second,&result);
-    }
-    //countCost(count_log);
     s2e_log.close();
+    generateTestCases(&cost_table);
 
     return 0;
 }
 
-void diffTrace( std::map<int, stateRecord> *cost_table) {
+void generateTestCases(std::map<int, stateRecord> *cost_table) {
+    std::ofstream parsed_log;
+    parsed_log.open("temp.log");
+
+    if (((*cost_table)[1].execution_time - (*cost_table)[0].execution_time) / (*cost_table)[0].execution_time > 0.2) {
+        unifiedDiff((*cost_table)[0].trace, (*cost_table)[1].trace, parsed_log);
+        parsed_log.close();
+
+        diffTrace(cost_table);
+        std::ofstream result;
+        result.open("result-compare.log");
+        for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
+            result << "[State " << record_iterator->first << "] => the number of instruction is "
+                   << record_iterator->second.instruction_count << ",the number of syscall is "
+                   << record_iterator->second.syscall_count
+                   << ", the total execution time " << record_iterator->second.execution_time << "ms\n";
+        }
+        create_critical_path(1, (*cost_table)[1], &result);
+        result.close();
+    } else {
+        std::ofstream result;
+        result.open("result-compare.log");
+        for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
+            result << "[State " << record_iterator->first << "] => the number of instruction is "
+                   << record_iterator->second.instruction_count << ",the number of syscall is "
+                   << record_iterator->second.syscall_count
+                   << ", the total execution time " << record_iterator->second.execution_time << "ms\n";
+        }
+    }
+}
+
+void diffTrace(std::map<int, stateRecord> *cost_table) {
     std::ifstream diff_log("temp.log");
     if (diff_log.is_open()) {
         while (diff_log.good()) {
@@ -217,24 +233,27 @@ void diffTrace( std::map<int, stateRecord> *cost_table) {
     int size = (*cost_table)[0].trace.size();
     for (auto record = (*cost_table)[1].trace.begin(); record != (*cost_table)[1].trace.end(); ++record) {
         if (count >= size) {
-            count = size-1;
+            count = size - 1;
         }
 
-        if(diff_count >= diff_size) {
-            diff_count = diff_size-1;
+        if (diff_count >= diff_size) {
+            diff_count = diff_size - 1;
         }
+
         function_trace original_trace = (*cost_table)[0].trace.at(count);
         function_trace diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
-        while (!diff_trace.diff_flag && (diff_trace.function == original_trace.function)){
-             count++;
-             diff_count++;
-             original_trace = (*cost_table)[0].trace.at(count);
-             diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
+
+        while (!diff_trace.diff_flag && (diff_trace.function == original_trace.function)) {
+            count++;
+            diff_count++;
+            original_trace = (*cost_table)[0].trace.at(count);
+            diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
         }
-        if (original_trace.function == record->function ) {
-             record->diff_execution = s2f<double >(record->execution_time) - s2f<double>(original_trace.execution_time);
-             count++;
-        } else if (diff_trace.diff_flag && (diff_trace.function == record->function)){
+        if (original_trace.function == record->function) {
+            record->diff_execution = s2f<double>(record->execution_time) - s2f<double>(original_trace.execution_time);
+            count++;
+        } else if (diff_trace.diff_flag && (diff_trace.function == record->function)) {
+            record->diff_execution = s2f<double>(record->execution_time);
             diff_count++;
         } else {
             printf("A error occurs\n");
@@ -242,7 +261,6 @@ void diffTrace( std::map<int, stateRecord> *cost_table) {
     }
 
 }
-
 
 
 bool get_diff(const std::string *line) {
@@ -254,18 +272,56 @@ bool get_diff(const std::string *line) {
     } else if (token == "-") {
         return false;
     }
-    assert(-1); // should reach here
+    assert(false); // should reach here
     return false;
 }
 
-void create_critical_path(int state, stateRecord state_record,std::ofstream *parsed_log) {
-    for (std::vector<function_trace>::iterator function_trace = state_record.trace.begin();
-         function_trace != state_record.trace.end(); function_trace++) {
-        if (s2f<double>(function_trace->execution_time) > 0.1) {
-            (*parsed_log) << "[State " << state << "]" <<" Function " << function_trace->function << ", caller " << function_trace->caller
-                       << ", execution time " << function_trace->execution_time << "; diff time "<< function_trace->diff_execution<< "ms\n";
+//bool cmp()
+//
+//vector<function_trace*>x(N, NULL);
+//sort(x.begin(), x.end(), cmp);
+//res = unique(x.begin(), x.end(), cmp);
+//x.resize(distance(x.begin(), res));
+//lower_bound(x.begin(), x.end(), cmp, elem);
+void create_critical_path(int state, stateRecord state_record, std::ofstream *parsed_log) {
+    std::string parentId = "-1";
+    for (int i = 0; i< 15; i++) {
+        double m_diff = 0;
+        function_trace result;
+        int postion = 0;
+        int count = 0;
+        for (std::vector<function_trace>::iterator function_trace = state_record.trace.begin();
+            function_trace != state_record.trace.end(); function_trace++) {
+            count++;
+            if (function_trace->parentId == parentId) {
+                if (function_trace->diff_execution>m_diff && function_trace->function !="0x59a448" && function_trace->function !="0x3d98cb"){
+                    m_diff = function_trace->diff_execution;
+                    postion = count;
+                }
+            }
         }
+        if (postion == 0)
+            break;
+        result = state_record.trace[postion-1];
+        (*parsed_log)  << "[State " << state << "]" << " Function " << result.function << ", caller "
+                   << result.caller
+                   << ",activityId " << result.activityId << ",parentId " << result.parentId
+                   << ", execution time " << result.execution_time << "; diff time "
+                   << result.diff_execution << "ms\n";
+        parentId = result.activityId;
     }
+
+
+//    for (std::vector<function_trace>::iterator function_trace = state_record.trace.begin();
+//         function_trace != state_record.trace.end(); function_trace++) {
+//        if (function_trace->diff_execution > 1) {
+//            (*parsed_log) << "[State " << state << "]" << " Function " << function_trace->function << ", caller "
+//                          << function_trace->caller
+//                          << ",activityId " << function_trace->activityId << ",parentId " << function_trace->parentId
+//                          << ", execution time " << function_trace->execution_time << "; diff time "
+//                          << function_trace->diff_execution << "ms\n";
+//        }
+//    }
 }
 
 std::string get_execution_time(const std::string *line, std::string name) {
@@ -342,7 +398,8 @@ void countCost(std::ifstream &count_log) {
 }
 
 static void
-unifiedDiff(std::vector<function_trace> original_trace, std::vector<function_trace> changed_trace, std::ofstream &parsed_log) {
+unifiedDiff(std::vector<function_trace> original_trace, std::vector<function_trace> changed_trace,
+            std::ofstream &parsed_log) {
     dtl::Diff<function_trace, std::vector<function_trace> > diff(original_trace, changed_trace);
     diff.onHuge();
     diff.compose();
