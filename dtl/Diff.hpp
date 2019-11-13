@@ -306,9 +306,6 @@ namespace dtl {
             delete[] this->fp;
         }
 
-
-
-
         /**
          * print difference between A and B as an SES
          */

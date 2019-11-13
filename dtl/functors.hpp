@@ -81,20 +81,17 @@ namespace dtl {
         ChangePrinter  (stream& out) : Printer < sesElem, stream > (out) {}
         ~ChangePrinter () {}
         void operator() (const sesElem& se) const {
-            if (se.first.isOutLayer()) {
-                switch (se.second.type) {
-                    case SES_ADD:
-                        this->out_ << SES_MARK_ADD  << se.first << endl;
-                        break;
-                    case SES_DELETE:
-                        this->out_ << SES_MARK_DELETE << se.first << endl;
-                        break;
-//                    case SES_COMMON:
-//                        this->out_ << SES_MARK_COMMON << se.first << endl;
-//                        break;
-                }
+            switch (se.second.type) {
+            case SES_ADD:
+                this->out_ << SES_MARK_ADD    << se.first << endl;
+                break;
+            case SES_DELETE:
+                this->out_ << SES_MARK_DELETE << se.first << endl;
+                break;
+            case SES_COMMON:
+                this->out_ << SES_MARK_COMMON << se.first << endl;
+                break;
             }
-
         }
     };
     
@@ -109,15 +106,14 @@ namespace dtl {
         UniHunkPrinter  (stream& out) : out_(out)  {}
         ~UniHunkPrinter () {}
         void operator() (const uniHunk< sesElem >& hunk) const {
-           /* out_ << "@@"
+            out_ << "@@"
                  << " -"  << hunk.a << "," << hunk.b
                  << " +"  << hunk.c << "," << hunk.d
                  << " @@" << endl;
-
-
-            for_each(hunk.common[0].begin(), hunk.common[0].end(), CommonPrinter< sesElem, stream >(out_));*/
+            
+            for_each(hunk.common[0].begin(), hunk.common[0].end(), CommonPrinter< sesElem, stream >(out_));
             for_each(hunk.change.begin(),    hunk.change.end(),    ChangePrinter< sesElem, stream >(out_));
-           // for_each(hunk.common[1].begin(), hunk.common[1].end(), CommonPrinter< sesElem, stream >(out_));
+            for_each(hunk.common[1].begin(), hunk.common[1].end(), CommonPrinter< sesElem, stream >(out_));
         }
     private :
         stream& out_;

@@ -3,6 +3,7 @@
 #include <string>
 #include <regex>
 #include "dtl/dtl.hpp"
+#include "include/cxxopts.hpp"
 #include <sstream>
 #include <assert.h>
 
@@ -93,20 +94,24 @@ void diffTrace(std::map<int, stateRecord> *cost_table);
 
 bool get_diff(const std::string *line);
 
-void generateTestCases(std::map<int, stateRecord> *cost_table);
+void generateTestCases(std::map<int, stateRecord> *cost_table, std::string output_path);
 
 int main(int argc, char **argv) {
     std::string line;
-    char *log_path;
+    std::string log_path;
+    std::string output_path;
     std::string expression = "LatencyTracker: Function";
     std::map<int, stateRecord> cost_table;
 
-    if (argc != 2) {
-        printf("The argument doesn't match\n");
-        return -1;
-    }
+    cxxopts::Options options("Log analyzer", "analyze the log of s2e result");
+    options.add_options()
+            ("p,path", "input file name", cxxopts::value<std::string>())
+            ("o,output", "output file name",cxxopts::value<std::string>() )
+            ;
+    auto result = options.parse(argc, argv);
+    log_path = result["path"].as<std::string>();
+    output_path = result["output"].as<std::string>();
 
-    log_path = argv[1];
     std::ifstream s2e_log(log_path);
 
     if (s2e_log.is_open()) {
@@ -172,12 +177,12 @@ int main(int argc, char **argv) {
     }
 
     s2e_log.close();
-    generateTestCases(&cost_table);
+    generateTestCases(&cost_table,output_path);
 
     return 0;
 }
 
-void generateTestCases(std::map<int, stateRecord> *cost_table) {
+void generateTestCases(std::map<int, stateRecord> *cost_table, std::string output_path) {
     std::ofstream parsed_log;
     parsed_log.open("temp.log");
 
@@ -187,7 +192,7 @@ void generateTestCases(std::map<int, stateRecord> *cost_table) {
 
         diffTrace(cost_table);
         std::ofstream result;
-        result.open("result-compare.log");
+        result.open(output_path);
         for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
             result << "[State " << record_iterator->first << "] => the number of instruction is "
                    << record_iterator->second.instruction_count << ",the number of syscall is "
@@ -198,7 +203,7 @@ void generateTestCases(std::map<int, stateRecord> *cost_table) {
         result.close();
     } else {
         std::ofstream result;
-        result.open("result-compare.log");
+        result.open(output_path);
         for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
             result << "[State " << record_iterator->first << "] => the number of instruction is "
                    << record_iterator->second.instruction_count << ",the number of syscall is "
@@ -312,16 +317,6 @@ void create_critical_path(int state, stateRecord state_record, std::ofstream *pa
     }
 
 
-//    for (std::vector<function_trace>::iterator function_trace = state_record.trace.begin();
-//         function_trace != state_record.trace.end(); function_trace++) {
-//        if (function_trace->diff_execution > 1) {
-//            (*parsed_log) << "[State " << state << "]" << " Function " << function_trace->function << ", caller "
-//                          << function_trace->caller
-//                          << ",activityId " << function_trace->activityId << ",parentId " << function_trace->parentId
-//                          << ", execution time " << function_trace->execution_time << "; diff time "
-//                          << function_trace->diff_execution << "ms\n";
-//        }
-//    }
 }
 
 std::string get_execution_time(const std::string *line, std::string name) {
