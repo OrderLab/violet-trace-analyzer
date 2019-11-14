@@ -3,7 +3,8 @@
 #include <string>
 #include <regex>
 #include "dtl/dtl.hpp"
-#include "include/cxxopts.hpp"
+#include "parse/cxxopts.hpp"
+#include "sys_var.h"
 #include <sstream>
 #include <assert.h>
 
@@ -96,6 +97,8 @@ bool get_diff(const std::string *line);
 
 void generateTestCases(std::map<int, stateRecord> *cost_table, std::string output_path);
 
+struct system_variables global_system_variables;
+
 int main(int argc, char **argv) {
     std::string line;
     std::string log_path;
@@ -103,14 +106,18 @@ int main(int argc, char **argv) {
     std::string expression = "LatencyTracker: Function";
     std::map<int, stateRecord> cost_table;
 
+
     cxxopts::Options options("Log analyzer", "analyze the log of s2e result");
+
     options.add_options()
             ("p,path", "input file name", cxxopts::value<std::string>())
-            ("o,output", "output file name",cxxopts::value<std::string>() )
+            ("o,output", "output file name",cxxopts::value<std::string>())
+            ("overwrite", "is overwrite", cxxopts::value<bool>());
             ;
     auto result = options.parse(argc, argv);
     log_path = result["path"].as<std::string>();
     output_path = result["output"].as<std::string>();
+    global_system_variables.is_overwrite = result["overwrite"].as<bool>();
 
     std::ifstream s2e_log(log_path);
 
@@ -192,7 +199,10 @@ void generateTestCases(std::map<int, stateRecord> *cost_table, std::string outpu
 
         diffTrace(cost_table);
         std::ofstream result;
-        result.open(output_path);
+        if (global_system_variables.is_overwrite)
+            result.open(output_path);
+        else
+            result.open(output_path, std::fstream::app);
         for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
             result << "[State " << record_iterator->first << "] => the number of instruction is "
                    << record_iterator->second.instruction_count << ",the number of syscall is "
