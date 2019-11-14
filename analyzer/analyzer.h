@@ -27,8 +27,6 @@ static void
 unifiedDiff(std::vector<functionTracer> original_trace, std::vector<functionTracer> changed_trace,
             std::ofstream &parsed_log);
 
-void countCost(std::ifstream &parsed_log);
-
 bool is_caseResult(std::string line);
 
 size_t getPosition(std::string filter, const std::string *line);

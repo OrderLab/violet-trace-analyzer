@@ -296,31 +296,6 @@ bool get_diff(const std::string *line) {
 //x.resize(distance(x.begin(), res));
 //lower_bound(x.begin(), x.end(), cmp, elem);
 
-/*
-* Count the cost
-*/
-void countCost(std::ifstream &count_log) {
-    int inc_cost = 0;
-    int des_cost = 0;
-    std::string line;
-    while (count_log.good()) {
-        getline(count_log, line);
-        std::string token;
-        std::stringstream stream(line);
-        int cnt = 0;
-        while (getline(stream, token, ' ')) {
-            if (cnt == 1 && line.front() == '+')
-                inc_cost += s2f<double>(token);
-            if (cnt == 1 && line.front() == '-')
-                des_cost += s2f<double>(token);
-            cnt++;
-        }
-    }
-
-    std::cout << "when autocommit = 1, the cost is " << inc_cost << " ms\n";
-    std::cout << "when autocommit = 0, the cost is " << des_cost << " ms\n";
-
-}
 
 static void
 unifiedDiff(std::vector<functionTracer> original_trace, std::vector<functionTracer> changed_trace,
