@@ -5,8 +5,10 @@
 #ifndef LOG_ANALYZER_SYS_VAR_H
 #define LOG_ANALYZER_SYS_VAR_H
 
-typedef struct system_variables
+struct system_variables
 {
     bool is_overwrite;
+    std::string log_path;
+    std::string output_path;
 };
 #endif //LOG_ANALYZER_SYS_VAR_H
