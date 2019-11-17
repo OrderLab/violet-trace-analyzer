@@ -292,10 +292,15 @@ void diffTrace(std::map<int, stateRecord> *cost_table) {
       (*cost_table)[1].diff_trace.push_back(function_trace);
     }
   }
-  int count = 0;
-  int diff_count = 0;
-  int diff_size = (*cost_table)[1].diff_trace.size();
-  int size = (*cost_table)[0].trace.size();
+  size_t count = 0;
+  size_t diff_count = 0;
+  size_t diff_size = (*cost_table)[1].diff_trace.size();
+  size_t size = (*cost_table)[0].trace.size();
+  // FIXME: continuing with size 0 will cause count to be -1
+  if (size == 0) {
+    std::cerr << "Warning: original trace size is zero " << std::endl;
+    return;
+  }
   for (auto record = (*cost_table)[1].trace.begin();
        record != (*cost_table)[1].trace.end(); ++record) {
     if (count >= size) {
@@ -325,7 +330,8 @@ void diffTrace(std::map<int, stateRecord> *cost_table) {
       record->diff_execution = s2f<double>(record->execution_time);
       diff_count++;
     } else {
-      printf("A error occurs\n");
+      // FIXME: what error??
+      std::cerr << "An error occurred " << std::endl;
     }
   }
 }
