@@ -5,59 +5,48 @@
 #ifndef LOG_ANALYZER_FUNCTIONTRACER_H
 #define LOG_ANALYZER_FUNCTIONTRACER_H
 
-
-#include <string>
 #include <sstream>
+#include <string>
 
-template<typename T>
+template <typename T>
 T s2f(const std::string &s) {
-    std::stringstream i;
-    i << s;
-    T r;
-    i >> r;
-    return r;
+  std::stringstream i;
+  i << s;
+  T r;
+  i >> r;
+  return r;
 }
 
-
 class functionTracer {
-public:
-    std::string function;
-    std::string execution_time;
-    double diff_execution;
+ public:
+  std::string function;
+  std::string execution_time;
+  double diff_execution;
 
-    std::string caller;
-    std::string activityId;
-    std::string parentId;
-    bool diff_flag;
+  std::string caller;
+  std::string activityId;
+  std::string parentId;
+  bool diff_flag;
 
-    functionTracer() {
-        diff_execution = 0;
-    }
+  functionTracer() { diff_execution = 0; }
 
-    void set_address(std::string address) {
-        function = address;
-    }
+  void set_address(std::string address) { function = address; }
 
-    void set_latency(std::string latency) {
-        execution_time = latency;
-    }
+  void set_latency(std::string latency) { execution_time = latency; }
 
-    bool isEqual(const functionTracer &rhs) const {
-        return function == rhs.function;
-    }
+  bool isEqual(const functionTracer &rhs) const {
+    return function == rhs.function;
+  }
 
-    bool isOutLayer() const {
-        return s2f<double>(execution_time) < 5000;
-    }
+  bool isOutLayer() const { return s2f<double>(execution_time) < 5000; }
 
-    friend bool operator==(const functionTracer &lhs, const functionTracer &rhs) {
-        return lhs.isEqual(rhs);
-    }
+  friend bool operator==(const functionTracer &lhs, const functionTracer &rhs) {
+    return lhs.isEqual(rhs);
+  }
 
-    friend std::ostream &operator<<(std::ostream &o, const functionTracer &t) {
-        return o << "; Function " << t.function << "; runs " << t.execution_time;
-    }
+  friend std::ostream &operator<<(std::ostream &o, const functionTracer &t) {
+    return o << "; Function " << t.function << "; runs " << t.execution_time;
+  }
 };
 
-
-#endif //LOG_ANALYZER_FUNCTIONTRACER_H
+#endif  // LOG_ANALYZER_FUNCTIONTRACER_H
