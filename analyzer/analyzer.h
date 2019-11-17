@@ -28,7 +28,7 @@ struct stateRecord {
     std::vector<functionTracer> diff_trace;
 };
 
-int handle_options (int argc, char **argv);
+int parse_options (int argc, char **argv);
 
 void unifiedDiff(std::vector<functionTracer> original_trace, std::vector<functionTracer> changed_trace,
             std::ofstream &parsed_log);

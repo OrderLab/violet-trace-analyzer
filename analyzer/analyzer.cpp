@@ -25,12 +25,62 @@ using dtl::uniHunk;
 
 struct system_variables global_system_variables;
 
+cxxopts::Options add_options() {
+  cxxopts::Options options("Log analyzer", "Analyze the log of s2e result");
+
+  options.add_options()
+          ("p,path", "input file name", cxxopts::value<std::string>())
+          ("o,output", "output file name",cxxopts::value<std::string>())
+          ("overwrite", "is overwrite", cxxopts::value<bool>())
+          ("help", "Print help message")
+  ;
+
+  return options;
+}
+
+inline bool file_exists(const std::string& name) {
+  std::ifstream f(name.c_str());
+  return f.good();
+}
+
+int parse_options(int argc, char **argv) {
+    auto options = add_options();
+    try {
+      auto result = options.parse(argc, argv);
+      if (result.count("help")) {
+        std::cout << options.help() << std::endl;
+        exit(0);
+      }
+      if (!result.count("path")) {
+        throw cxxopts::option_required_exception("path");
+      }
+      if (!result.count("output")) {
+        throw cxxopts::option_required_exception("output");
+      }
+      global_system_variables.log_path = result["path"].as<std::string>();
+      global_system_variables.output_path = result["output"].as<std::string>();
+      global_system_variables.is_overwrite = result["overwrite"].as<bool>();
+      if (!file_exists(global_system_variables.log_path)) {
+        std::cerr << "Log file " << global_system_variables.log_path << "does not exist" << std::endl;
+        return -1;
+      }
+      return 0;
+    } catch (const cxxopts::OptionException& e) {
+      std::cerr << "Error in parsing options: " << e.what() << std::endl;
+      std::cerr << std::endl << options.help() << std::endl;
+      return -1;
+    }
+}
+
 int analyzer_main(int argc, char **argv) {
     std::string line;
     std::string expression = "LatencyTracker: Function";
     std::map<int, stateRecord> cost_table;
+    
+    if (parse_options(argc, argv) < 0) {
+      exit(1);
+    }
 
-    handle_options(argc, argv);
     std::ifstream s2e_log(global_system_variables.log_path);
 
     if (s2e_log.is_open()) {
@@ -98,22 +148,6 @@ int analyzer_main(int argc, char **argv) {
     s2e_log.close();
     generateTestCases(&cost_table,global_system_variables.output_path);
 
-    return 0;
-}
-
-
-int handle_options(int argc, char **argv) {
-    cxxopts::Options options("Log analyzer", "analyze the log of s2e result");
-
-    options.add_options()
-            ("p,path", "input file name", cxxopts::value<std::string>())
-            ("o,output", "output file name",cxxopts::value<std::string>())
-            ("overwrite", "is overwrite", cxxopts::value<bool>());
-    ;
-    auto result = options.parse(argc, argv);
-    global_system_variables.log_path = result["path"].as<std::string>();
-    global_system_variables.output_path = result["output"].as<std::string>();
-    global_system_variables.is_overwrite = result["overwrite"].as<bool>();
     return 0;
 }
 
