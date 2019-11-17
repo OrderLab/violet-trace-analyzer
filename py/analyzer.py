@@ -22,6 +22,8 @@ import argparse
 import sys
 import os
 import difflib
+from difflib import SequenceMatcher
+from datetime import datetime
 
 from parselib import parse_s2e_log
 from utils import setup_logger
@@ -34,20 +36,68 @@ parser.add_argument('--overwrite', action='store_true', help='path to output res
 
 logger = setup_logger('analyzer', 'violet_analyzer.log')
 
-def diff_function_trace(first_trace, second_trace, first_name='first_trace', second_name='second_trace', out=sys.stdout):
+def _format_range_unified(start, stop):
+    beginning = start + 1 # lines start numbering with one
+    length = stop - start
+    if length == 1:
+        return '{}'.format(beginning)
+    if not length:
+        beginning -= 1  # empty ranges begin at line just before the range
+    return '{},{}'.format(beginning, length)
+
+def diff_function_trace(first_trace, second_trace, first_name='first_trace', 
+        second_name='second_trace', out=sys.stdout, original_unified_diff=False):
     first_items = first_trace.items
     second_items = second_trace.items
-    # We have to use the trace item hash key to compute the diff.
-    # The hash key is from the function name and caller name. 
-    # Each hash key is appended with a '\n' as lineterm to use in out.write
-    first_items_keys = [item.hash_key() + '\n' for item in first_items]
-    second_items_keys = [item.hash_key() + '\n' for item in second_items]
-    for diff in difflib.unified_diff(first_items_keys, second_items_keys, first_name, second_name):
-        out.write(diff)
 
-def analyze_cost_table(cost_table):
+    if original_unified_diff:
+        # We have to use the trace item hash key to compute the diff.
+        # The hash key is from the function name and caller name. 
+        # Each hash key is appended with a '\n' as lineterm to use in out.write
+        first_items_keys = [item.hash_key() + '\n' for item in first_items]
+        second_items_keys = [item.hash_key() + '\n' for item in second_items]
+        for diff in difflib.unified_diff(first_items_keys, second_items_keys, first_name, second_name):
+            out.write(diff)
+    else:
+        first_items_keys = [item.hash_key() for item in first_items]
+        second_items_keys = [item.hash_key() for item in second_items]
+        # The following is from the official unified_diff function in the Python difflib
+        # https://github.com/python/cpython/blob/2.7/Lib/difflib.py#L1156
+        # We copied it here so that we can use hash key for computing the 
+        # diff and in the meantime directly obtain the index of the key array 
+        # to get the trace item from the item array. Otherwise we will have to 
+        # parse the diff again...
+        started = False
+        for group in SequenceMatcher(None, first_items_keys, second_items_keys).get_grouped_opcodes(3):
+            if not started:
+                started = True
+                out.write('--- {}\t{}\n'.format(first_name, datetime.now()))
+                out.write('+++ {}\t{}\n'.format(second_name, datetime.now()))
+            first, last = group[0], group[-1]
+            file1_range = _format_range_unified(first[1], last[2])
+            file2_range = _format_range_unified(first[3], last[4])
+            out.write('@@ -{} +{} @@\n'.format(file1_range, file2_range))
+            for tag, i1, i2, j1, j2 in group:
+                if tag == 'equal':
+                    for line in first_items[i1:i2]:
+                        out.write(' %s\n' % line)
+                    continue
+                if tag in ('replace', 'delete'):
+                    for line in first_items[i1:i2]:
+                        out.write('-%s\n' % line)
+                if tag in ('replace', 'insert'):
+                    for line in second_items[j1:j2]:
+                        out.write('+%s\n' % line)
+
+
+def analyze_cost_table(cost_table, output=None):
     state_ids = cost_table.state_ids()
     size = len(cost_table)
+    if output is None:
+        # if not output file is specified, print to console
+        out = sys.stdout
+    else:
+        out = open(output, 'w')
     for i in range(size - 1):
         for j in range(i + 1, size):
             first_record = cost_table.get_record(state_ids[i])
@@ -55,7 +105,9 @@ def analyze_cost_table(cost_table):
             from_name = 'violet_trace_state_%d' % (first_record.state_id)
             to_name = 'violet_trace_state_%d' % (second_record.state_id)
             diff_function_trace(first_record.function_trace, second_record.function_trace,
-                    from_name, to_name)
+                    from_name, to_name, out)
+    if output:
+        out.close()
 
 def main(argv):
     args = parser.parse_args(argv)
@@ -68,7 +120,7 @@ def main(argv):
         parser.print_help()
         sys.exit(1)
     cost_table = parse_s2e_log(args.input)
-    analyze_cost_table(cost_table)
+    analyze_cost_table(cost_table, args.output)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
