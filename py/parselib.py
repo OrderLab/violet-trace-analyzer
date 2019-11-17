@@ -32,7 +32,7 @@ MSG_FUNCTION_RE = re.compile(r'''Function (?P<address>[0-9a-fx]+); activityId (?
 logger = logging.getLogger('parselib')
 
 def parse_s2e_log(fpath):
-    cost_table = VioletCostTable()
+    cost_table = VioletStateCostRecordTable()
     with open(fpath, 'r') as inf:
         for line in inf:
             match_result = PLUGIN_LINE_RE.match(line)
@@ -43,28 +43,29 @@ def parse_s2e_log(fpath):
                     match_result = MSG_INST_CNT_RE.match(message)
                     if match_result:
                         address, instr_cnt, syscall_cnt = match_result.group('address', 'instr_cnt', 'syscall_cnt')
-                        trace = VioletStateTrace(state_id, int(instr_cnt), int(syscall_cnt))
-                        logger.debug(trace)
-                        cost_table.add(state_id, trace)
+                        record = VioletStateCostRecord(state_id, int(instr_cnt), int(syscall_cnt))
+                        logger.debug(record)
+                        logger.info('adding cost record for state %d' % (state_id))
+                        cost_table.add_record(state_id, record)
                 elif plugin == PLUGIN_LATENCY:
                     match_result = MSG_FUNCTION_RE.match(message)
                     if match_result:
                         address, activity_id, caller, parent_id, execution_time = \
                                 match_result.group('address', 'activity_id', 'caller',
                                         'parent_id', 'execution_time')
-                        current_trace = cost_table.get_trace(state_id)
-                        if not current_trace:
-                            logger.warning('No trace so far, creating one ' + line)
-                            current_trace = VioletStateTrace(state_id, 0, 0)
-                            cost_table.add(state_id, current_trace)
+                        current_record = cost_table.get_record(state_id)
+                        if not current_record:
+                            logger.warning('No cost record for %d, creating one' % (state_id))
+                            current_record = VioletStateCostRecord(state_id, 0, 0)
+                            cost_table.add_record(state_id, current_record)
                         execution_time = Decimal(execution_time)
-                        item = VioletFunctionTraceItem(address, execution_time, 
-                                caller, int(activity_id), int(parent_id))
-                        logger.debug(item)
                         if caller == '0x0':
                             # if the caller is 0x0, we are at the root of the call 
                             # chain, add the execution time to this state id's 
                             # trace execution time
-                            current_trace.execution_time += execution_time
-                        current_trace.add_item(item)
+                            current_record.execution_time += execution_time
+                        trace_item = VioletFunctionTraceItem(address, execution_time, 
+                                caller, int(activity_id), int(parent_id))
+                        # logger.debug(trace_item)
+                        current_record.add_trace_item(trace_item)
     return cost_table
