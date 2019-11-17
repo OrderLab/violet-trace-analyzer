@@ -1,13 +1,21 @@
 //
+// The Violet Project  
+//
 // Created by yigonghu on 11/13/19.
 //
+// Copyright (c) 2019, Johns Hopkins University - Order Lab.
+//
+//    All rights reserved.
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    
 
-#include <fstream>
 
 #include "analyzer.h"
 #include "sys_var.h"
-#include "cxxopts.hpp"
-#include "../dtl/dtl.hpp"
+#include "cxxopts/cxxopts.hpp"
+#include "dtl/dtl.hpp"
+
+#include <fstream>
 #include <assert.h>
 #include <regex>
 

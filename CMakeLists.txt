@@ -1,17 +1,25 @@
-cmake_minimum_required(VERSION 3.13)
+# The Violet Project  
+#
+# Copyright (c) 2019, Johns Hopkins University - Order Lab.
+#
+#    All rights reserved.
+#    Licensed under the Apache License, Version 2.0 (the "License");
+#
+
+cmake_minimum_required(VERSION 3.0)
 project(log_analyzer)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if (CXXOPTS_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD ${CXXOPTS_CXX_STANDARD})
+else()
+  set(CMAKE_CXX_STANDARD 11)
+endif()
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror")
 
 include_directories(.)
-include_directories(analyzer)
-include_directories(dtl)
 
-add_executable(log_analyzer
-        analyzer
-        analyzer/analyzer.cpp
-    main.cpp)
-
-#analyzer/functionTracer.cpp
-#analyzer/functionTracer.h
-#analyzer/sys_var.h
+add_subdirectory(analyzer)
