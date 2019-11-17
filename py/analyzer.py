@@ -21,6 +21,7 @@ limitations under the License.
 import argparse
 import sys
 import os
+import difflib
 
 from parselib import parse_s2e_log
 from utils import setup_logger
@@ -33,10 +34,28 @@ parser.add_argument('--overwrite', action='store_true', help='path to output res
 
 logger = setup_logger('analyzer', 'violet_analyzer.log')
 
+def diff_function_trace(first_trace, second_trace, first_name='first_trace', second_name='second_trace', out=sys.stdout):
+    first_items = first_trace.items
+    second_items = second_trace.items
+    # We have to use the trace item hash key to compute the diff.
+    # The hash key is from the function name and caller name. 
+    # Each hash key is appended with a '\n' as lineterm to use in out.write
+    first_items_keys = [item.hash_key() + '\n' for item in first_items]
+    second_items_keys = [item.hash_key() + '\n' for item in second_items]
+    for diff in difflib.unified_diff(first_items_keys, second_items_keys, first_name, second_name):
+        out.write(diff)
+
 def analyze_cost_table(cost_table):
     state_ids = cost_table.state_ids()
-    for state_id in state_ids:
-        trace = cost_table.get_trace(state_id)
+    size = len(cost_table)
+    for i in range(size - 1):
+        for j in range(i + 1, size):
+            first_record = cost_table.get_record(state_ids[i])
+            second_record = cost_table.get_record(state_ids[j])
+            from_name = 'violet_trace_state_%d' % (first_record.state_id)
+            to_name = 'violet_trace_state_%d' % (second_record.state_id)
+            diff_function_trace(first_record.function_trace, second_record.function_trace,
+                    from_name, to_name)
 
 def main(argv):
     args = parser.parse_args(argv)
