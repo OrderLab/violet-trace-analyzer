@@ -114,6 +114,7 @@ int handle_options(int argc, char **argv) {
     global_system_variables.log_path = result["path"].as<std::string>();
     global_system_variables.output_path = result["output"].as<std::string>();
     global_system_variables.is_overwrite = result["overwrite"].as<bool>();
+    return 0;
 }
 
 void generateTestCases(std::map<int, stateRecord> *cost_table, std::string output_path) {
@@ -305,8 +306,7 @@ bool get_diff(const std::string *line) {
 //lower_bound(x.begin(), x.end(), cmp, elem);
 
 
-static void
-unifiedDiff(std::vector<functionTracer> original_trace, std::vector<functionTracer> changed_trace,
+void unifiedDiff(std::vector<functionTracer> original_trace, std::vector<functionTracer> changed_trace,
             std::ofstream &parsed_log) {
     dtl::Diff<functionTracer, std::vector<functionTracer> > diff(original_trace, changed_trace);
     diff.onHuge();
