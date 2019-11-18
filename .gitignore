@@ -36,3 +36,7 @@
 cmake-build-debug/
 debug.txt
 
+build/
+*.log
+*.swp
+*.diff
