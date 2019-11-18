@@ -111,17 +111,19 @@ int handle_options(int argc, char **argv) {
 void generateTestCases(std::map<int, stateRecord> *cost_table, std::string output_path) {
     std::ofstream parsed_log;
     parsed_log.open("temp.log");
+    std::ofstream result;
+    if (global_system_variables.is_overwrite)
+        result.open(output_path);
+    else
+        result.open(output_path, std::fstream::app);
 
     if (((*cost_table)[1].execution_time - (*cost_table)[0].execution_time) / (*cost_table)[0].execution_time > 0.2) {
         unifiedDiff((*cost_table)[0].trace, (*cost_table)[1].trace, parsed_log);
         parsed_log.close();
 
         diffTrace(cost_table);
-        std::ofstream result;
-        if (global_system_variables.is_overwrite)
-            result.open(output_path);
-        else
-            result.open(output_path, std::fstream::app);
+
+
         for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
             result << "[State " << record_iterator->first << "] => the number of instruction is "
                    << record_iterator->second.instruction_count << ",the number of syscall is "
@@ -131,8 +133,6 @@ void generateTestCases(std::map<int, stateRecord> *cost_table, std::string outpu
         create_critical_path(1, (*cost_table)[1], &result);
         result.close();
     } else {
-        std::ofstream result;
-        result.open(output_path);
         for (auto record_iterator = cost_table->begin(); record_iterator != cost_table->end(); ++record_iterator) {
             result << "[State " << record_iterator->first << "] => the number of instruction is "
                    << record_iterator->second.instruction_count << ",the number of syscall is "
