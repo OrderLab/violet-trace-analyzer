@@ -157,9 +157,10 @@ void create_critical_path(int state, stateRecord state_record,
          function_trace != state_record.trace.end(); function_trace++) {
       count++;
       if (function_trace->parentId == parentId) {
+        const std::string function_str = hexval(function_trace->function).str();
+        // FIXME: what are the hard-coded strings for???
         if (function_trace->diff_execution > m_diff &&
-            function_trace->function != "0x59a448" &&
-            function_trace->function != "0x3d98cb") {
+            function_str != "0x59a448" && function_str != "0x3d98cb") {
           m_diff = function_trace->diff_execution;
           postion = count;
         }
@@ -189,7 +190,7 @@ void diffTrace(std::map<int, stateRecord> *cost_table) {
       symbol = get_diff(&line);
       std::string function = TraceLogParser::get_address(&line, "Function");
       std::string execution = TraceLogParser::get_execution_time(&line, "runs");
-      function_trace.function = function;
+      function_trace.function = s2f<uint64_t>(function);
       function_trace.execution_time = s2f<double>(execution);
       function_trace.diff_flag = symbol;
       (*cost_table)[1].diff_trace.push_back(function_trace);

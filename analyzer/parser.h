@@ -15,6 +15,7 @@
 #include <iostream>
 #include <sstream>
 #include "stateRecord.h"
+#include "functionTracer.h"
 
 // The base class for latency trace file parser
 class TraceParserBase {
@@ -28,6 +29,8 @@ class TraceParserBase {
     }
 
     virtual bool parse(std::map<int, stateRecord> &records) = 0;
+    virtual void add_trace(std::map<int, stateRecord> &records, int state_id, 
+        functionTracer &trace);
 };
 
 // Parse the violet plugin output from the S2E log debug.txt

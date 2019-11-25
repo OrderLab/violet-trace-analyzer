@@ -15,32 +15,30 @@
 #include <assert.h>
 #include <iomanip>
 
-
-struct hexval {
-  uint64_t value;
-  int width;
-  bool prefix;
-
-  hexval(uint64_t _value, int _width = 0, bool _prefix = true) :
-    value(_value), width(_width), prefix(_prefix) {
-  }
-  std::string str() const {
-    std::stringstream ss;
-    if (prefix) {
-      ss << "0x";
+void TraceParserBase::add_trace(std::map<int, stateRecord> &records, 
+    int state_id, functionTracer &trace)
+{
+  if (!records.count(state_id)) {
+    struct stateRecord record;
+    record.syscall_count = 0;
+    record.instruction_count = 0;
+    record.id = state_id;
+    if (trace.caller == 0) { // 0x0
+      record.execution_time = trace.execution_time;
+    } else {
+      record.execution_time = 0;
     }
-    ss << std::hex;
-    if (width) {
-      ss << std::setfill('0') << std::setw(width);
+    record.trace.push_back(trace);
+    records[state_id] = record;
+  } else {
+    assert(records.count(state_id) == 1);
+    struct stateRecord &record = records[state_id];
+    record.id = state_id;
+    if (trace.caller == 0) { // 0x0
+      record.execution_time += trace.execution_time;
     }
-    ss << value;
-    return ss.str();
+    record.trace.push_back(trace);
   }
-};
-
-inline std::ostream &operator<<(std::ostream &out, const hexval &h) {
-  out << h.str();
-  return out;
 }
 
 bool TraceLogParser::parse(std::map<int, stateRecord> &records)
@@ -83,32 +81,10 @@ bool TraceLogParser::parse(std::map<int, stateRecord> &records)
       functionTracer function_trace;
       function_trace.activityId = s2f<uint64_t>(get_address(&line, "activityId"));
       function_trace.parentId = s2f<uint64_t>(get_address(&line, "parentId"));
-      function_trace.function = get_address(&line, "Function");
-      function_trace.caller = get_address(&line, "caller");
+      function_trace.function = s2f<uint64_t>(get_address(&line, "Function"));
+      function_trace.caller = s2f<uint64_t>(get_address(&line, "caller"));
       function_trace.execution_time = s2f<double>(get_execution_time(&line, "runs"));
-      if (!records.count(id)) {
-        struct stateRecord record;
-        record.syscall_count = 0;
-        record.instruction_count = 0;
-        record.id = id;
-
-        if (function_trace.caller == "0x0") {
-          record.execution_time = function_trace.execution_time;
-        } else {
-          record.execution_time = 0;
-        }
-
-        record.trace.push_back(function_trace);
-        records[id] = record;
-      } else {
-        assert(records.count(id) == 1);
-        struct stateRecord &record = records[id];
-        record.id = id;
-        if (function_trace.caller == "0x0") {
-          record.execution_time += function_trace.execution_time;
-        }
-        record.trace.push_back(function_trace);
-      }
+      add_trace(records, id, function_trace);
     }
   }
   s2e_log.close();
@@ -198,47 +174,9 @@ bool TraceDatParser::parse(std::map<int, stateRecord> &records)
     // std::cout << "parsed state " << item.state_id << " address 0x" << std::setw(16) << std::setfill('0') << std::hex << item.address << std::endl;
     
     // FIXME: write syscall and instr cnt to the trace file and update the state record
-    if (!records.count(item.state_id)) {
-      struct stateRecord record;
-      record.id = item.state_id;
-      record.execution_time = 0;
-      records[item.state_id] = record;
-      record.syscall_count = 0;
-      record.instruction_count = 0;
-    } else {
-      assert(records.count(item.state_id) == 1);
-      struct stateRecord &record = records[item.state_id];
-      record.syscall_count = 0;
-      record.instruction_count = 0;
-    }
-    functionTracer function_trace;
-    function_trace.activityId = item.acticityId;
-    function_trace.parentId = item.parentId;
-    // FIXME: this is silly
-    function_trace.function = hexval(item.address).str();
-    function_trace.caller = hexval(item.callerAddress).str();
-    function_trace.execution_time = item.execution_time;
-    if (!records.count(item.state_id)) {
-      struct stateRecord record;
-      record.syscall_count = 0;
-      record.instruction_count = 0;
-      record.id = item.state_id;
-      if (item.callerAddress == 0) {
-        record.execution_time = item.execution_time;
-      } else {
-        record.execution_time = 0;
-      }
-      record.trace.push_back(function_trace);
-      records[item.state_id] = record;
-    } else {
-      assert(records.count(item.state_id) == 1);
-      struct stateRecord &record = records[item.state_id];
-      record.id = item.state_id;
-      if (item.callerAddress == 0) {
-        record.execution_time += item.execution_time;
-      }
-      record.trace.push_back(function_trace);
-    }
+    functionTracer function_trace(item.address, item.callerAddress, 
+        item.acticityId, item.parentId, item.execution_time);
+    add_trace(records, item.state_id, function_trace);
   }
   dat_file.close();
   std::cout << "Successfully parsed " << parsed_cnt << " trace records from " << m_fileName << std::endl;

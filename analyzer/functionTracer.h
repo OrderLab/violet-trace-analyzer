@@ -1,36 +1,40 @@
 //
+// The Violet Project
+//
 // Created by yigonghu on 11/13/19.
+//
+// Copyright (c) 2019, Johns Hopkins University - Order Lab.
+//
+//    All rights reserved.
+//    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
 #ifndef LOG_ANALYZER_FUNCTIONTRACER_H
 #define LOG_ANALYZER_FUNCTIONTRACER_H
 
 #include <sstream>
-#include <string>
-
-template <typename T>
-T s2f(const std::string &s) {
-  std::stringstream i;
-  i << s;
-  T r;
-  i >> r;
-  return r;
-}
+#include "utils.h"
 
 class functionTracer {
   public:
-    std::string function;
-    double execution_time;
-    double diff_execution;
-
-    std::string caller;
+    uint64_t function;    //64-bit address (hex format is more readable)
+    uint64_t caller;  //64-bit address (hex format is more readable)
     uint64_t activityId;
     uint64_t parentId;
+    double execution_time;
+
+    double diff_execution;
     bool diff_flag;
 
-    functionTracer() { diff_execution = 0; }
+    functionTracer() { diff_execution = 0; diff_flag = false; }
 
-    void set_address(std::string address) { function = address; }
+    functionTracer(uint64_t _func, uint64_t _caller, uint64_t _activity,
+        uint64_t _parent, double _latency):
+          function(_func), caller(_caller), activityId(_activity), parentId(_parent), 
+          execution_time(_latency), diff_execution(0),
+          diff_flag(false) { }
+
+    void set_address(uint64_t address) { function = address; }
 
     void set_latency(double latency) { execution_time = latency; }
 
@@ -45,7 +49,7 @@ class functionTracer {
     }
 
     friend std::ostream &operator<<(std::ostream &o, const functionTracer &t) {
-      return o << "; Function " << t.function << "; runs " << t.execution_time;
+      return o << "; Function " << hexval(t.function) << "; runs " << t.execution_time;
     }
 };
 
