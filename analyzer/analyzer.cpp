@@ -23,7 +23,7 @@ using dtl::Diff;
 using dtl::elemInfo;
 using dtl::uniHunk;
 
-struct system_variables global_system_variables;
+struct system_variables config;
 
 cxxopts::Options add_options() {
   cxxopts::Options options("Log analyzer", "Analyze the log of s2e result");
@@ -56,11 +56,11 @@ int parse_options(int argc, char **argv) {
     if (!result.count("output")) {
       throw cxxopts::option_required_exception("output");
     }
-    global_system_variables.log_path = result["path"].as<std::string>();
-    global_system_variables.output_path = result["output"].as<std::string>();
-    global_system_variables.is_overwrite = result["overwrite"].as<bool>();
-    if (!file_exists(global_system_variables.log_path)) {
-      std::cerr << "Log file " << global_system_variables.log_path
+    config.log_path = result["path"].as<std::string>();
+    config.output_path = result["output"].as<std::string>();
+    config.is_overwrite = result["overwrite"].as<bool>();
+    if (!file_exists(config.log_path)) {
+      std::cerr << "Log file " << config.log_path
                 << "does not exist" << std::endl;
       return -1;
     }
@@ -81,13 +81,21 @@ int analyzer_main(int argc, char **argv) {
     exit(1);
   }
 
-  TraceLogParser parser(global_system_variables.log_path);
+  TraceParserBase *parser;
+  std::string log_ext = config.log_path.substr(config.log_path.size() - 4, 4);
+  if (log_ext.compare(".txt") == 0) {
+    parser = new TraceLogParser(config.log_path);
+  } else {
+    // if the input file ends with anything other than .txt, we will use
+    // the binary trace parser.
+    parser = new TraceDatParser(config.log_path);
+  }
 
-  if (!parser.parse(cost_table)) {
+  if (!parser->parse(cost_table)) {
     exit(1);
   }
 
-  generateTestCases(&cost_table, global_system_variables.output_path);
+  generateTestCases(&cost_table, config.output_path);
   return 0;
 }
 
@@ -104,7 +112,7 @@ void generateTestCases(std::map<int, stateRecord> *cost_table,
 
     diffTrace(cost_table);
     std::ofstream result;
-    if (global_system_variables.is_overwrite)
+    if (config.is_overwrite)
       result.open(output_path);
     else
       result.open(output_path, std::fstream::app);
@@ -138,7 +146,7 @@ void generateTestCases(std::map<int, stateRecord> *cost_table,
 
 void create_critical_path(int state, stateRecord state_record,
                           std::ofstream *parsed_log) {
-  std::string parentId = "-1";
+  uint64_t parentId = 0;
   for (int i = 0; i < 15; i++) {
     double m_diff = 0;
     functionTracer result;
@@ -182,7 +190,7 @@ void diffTrace(std::map<int, stateRecord> *cost_table) {
       std::string function = TraceLogParser::get_address(&line, "Function");
       std::string execution = TraceLogParser::get_execution_time(&line, "runs");
       function_trace.function = function;
-      function_trace.execution_time = execution;
+      function_trace.execution_time = s2f<double>(execution);
       function_trace.diff_flag = symbol;
       (*cost_table)[1].diff_trace.push_back(function_trace);
     }
@@ -217,12 +225,11 @@ void diffTrace(std::map<int, stateRecord> *cost_table) {
       diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
     }
     if (original_trace.function == record->function) {
-      record->diff_execution = s2f<double>(record->execution_time) -
-                               s2f<double>(original_trace.execution_time);
+      record->diff_execution = record->execution_time - original_trace.execution_time;
       count++;
     } else if (diff_trace.diff_flag &&
                (diff_trace.function == record->function)) {
-      record->diff_execution = s2f<double>(record->execution_time);
+      record->diff_execution = record->execution_time;
       diff_count++;
     } else {
       // FIXME: what error??
