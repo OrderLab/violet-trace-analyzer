@@ -7,5 +7,6 @@
 #
 
 add_executable(log_analyzer
+    parser.cpp
     analyzer.cpp
     main.cpp)
