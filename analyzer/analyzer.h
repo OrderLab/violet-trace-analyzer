@@ -16,23 +16,20 @@
 #include <map>
 #include <sstream>
 #include <vector>
-#include "stateRecord.h"
+#include "trace.h"
 
 int parse_options(int argc, char **argv);
 
-void unifiedDiff(std::vector<functionTracer> original_trace,
-                 std::vector<functionTracer> changed_trace,
-                 std::ofstream &parsed_log);
+void create_critical_path(int state, StateCostRecord record, std::ofstream *parsed_log);
 
-void create_critical_path(int state, stateRecord state_record,
-                          std::ofstream *parsed_log);
+DiffChangeFlag get_change_flag(const std::string &line);
+bool unified_diff_trace(int first_trace_id, int second_trace_id,
+    FunctionTrace &first_trace, FunctionTrace &second_trace,
+    FunctionTrace &diff_trace, std::ofstream &diff_log);
+bool compute_diff_latency(FunctionTrace &first_trace, 
+    FunctionTrace &second_trace, FunctionTrace &diff_trace);
 
-void diffTrace(std::map<int, stateRecord> *cost_table);
-
-bool get_diff(const std::string *line);
-
-void generateTestCases(std::map<int, stateRecord> *cost_table,
-                       std::string output_path);
+void analyze_cost_table(StateCostTable *cost_table, std::string output_path);
 
 int analyzer_main(int argc, char **argv);
 
