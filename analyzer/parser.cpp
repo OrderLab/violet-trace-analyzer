@@ -15,33 +15,33 @@
 #include <assert.h>
 #include <iomanip>
 
-void TraceParserBase::add_trace(std::map<int, stateRecord> &records, 
-    int state_id, functionTracer &trace)
+void TraceParserBase::add_trace_item(StateCostTable *table, int state_id, 
+    FunctionTraceItem &item)
 {
-  if (!records.count(state_id)) {
-    struct stateRecord record;
+  if (!table->count(state_id)) {
+    StateCostRecord record;
     record.syscall_count = 0;
     record.instruction_count = 0;
     record.id = state_id;
-    if (trace.caller == 0) { // 0x0
-      record.execution_time = trace.execution_time;
+    if (item.caller == 0) { // 0x0
+      record.execution_time = item.execution_time;
     } else {
       record.execution_time = 0;
     }
-    record.trace.push_back(trace);
-    records[state_id] = record;
+    record.trace.push_back(item);
+    (*table)[state_id] = record;
   } else {
-    assert(records.count(state_id) == 1);
-    struct stateRecord &record = records[state_id];
+    assert(table->count(state_id) == 1);
+    StateCostRecord &record = (*table)[state_id];
     record.id = state_id;
-    if (trace.caller == 0) { // 0x0
-      record.execution_time += trace.execution_time;
+    if (item.caller == 0) { // 0x0
+      record.execution_time += item.execution_time;
     }
-    record.trace.push_back(trace);
+    record.trace.push_back(item);
   }
 }
 
-bool TraceLogParser::parse(std::map<int, stateRecord> &records)
+bool TraceLogParser::parse(StateCostTable *table)
 {
   std::string line;
   std::string expression = "LatencyTracker: Function";
@@ -55,20 +55,20 @@ bool TraceLogParser::parse(std::map<int, stateRecord> &records)
   while (s2e_log.good()) {
     int id;
     getline(s2e_log, line);
-    if (is_caseResult(line)) {
-      id = get_stateId(&line);
-      int instructions = stoi(get_count(&line, "instruction"));
-      int syscalls = stoi(get_count(&line, "syscall"));
-      if (!records.count(id)) {
-        struct stateRecord record;
+    if (is_case_result(line)) {
+      id = get_state_id(line);
+      int instructions = stoi(get_count(line, "instruction"));
+      int syscalls = stoi(get_count(line, "syscall"));
+      if (!table->count(id)) {
+        StateCostRecord record;
         record.syscall_count = syscalls;
         record.instruction_count = instructions;
         record.id = id;
         record.execution_time = 0;
-        records[id] = record;
+        (*table)[id] = record;
       } else {
-        assert(records.count(id) == 1);
-        struct stateRecord &record = records[id];
+        assert(table->count(id) == 1);
+        StateCostRecord &record = (*table)[id];
         assert(record.syscall_count == 0);
         assert(record.instruction_count == 0);
         record.syscall_count = syscalls;
@@ -77,21 +77,21 @@ bool TraceLogParser::parse(std::map<int, stateRecord> &records)
     }
 
     if (line.find(expression) != std::string::npos) {
-      id = get_stateId(&line);
-      functionTracer function_trace;
-      function_trace.activityId = s2f<uint64_t>(get_address(&line, "activityId"));
-      function_trace.parentId = s2f<uint64_t>(get_address(&line, "parentId"));
-      function_trace.function = s2f<uint64_t>(get_address(&line, "Function"));
-      function_trace.caller = s2f<uint64_t>(get_address(&line, "caller"));
-      function_trace.execution_time = s2f<double>(get_execution_time(&line, "runs"));
-      add_trace(records, id, function_trace);
+      id = get_state_id(line);
+      FunctionTraceItem item;
+      item.activity_id = s2f<uint64_t>(get_address(line, "activityId"));
+      item.parent_id = s2f<uint64_t>(get_address(line, "parentId"));
+      item.function = s2f<uint64_t>(get_address(line, "Function"));
+      item.caller = s2f<uint64_t>(get_address(line, "caller"));
+      item.execution_time = s2f<double>(get_execution_time(line, "runs"));
+      add_trace_item(table, id, item);
     }
   }
   s2e_log.close();
   return true;
 }
 
-bool TraceLogParser::is_caseResult(std::string line) {
+bool TraceLogParser::is_case_result(const std::string &line) {
   std::string expression = "TestCaseGenerator: generating test case at address";
   if (line.find(expression) != std::string::npos)
     return true;
@@ -99,47 +99,46 @@ bool TraceLogParser::is_caseResult(std::string line) {
     return false;
 }
 
-size_t TraceLogParser::getPosition(std::string filter, const std::string *line) {
-  size_t found = line->find(filter);
+size_t TraceLogParser::get_position(const std::string &filter, const std::string &line) {
+  size_t found = line.find(filter);
   if (found == std::string::npos)
     std::cout << "Can not find <" << filter << "> in line <" << line << ">\n";
   return found;
 }
 
-std::string TraceLogParser::get_count_base(const std::string *line, std::string name,
+std::string TraceLogParser::get_count_base(const std::string &line, std::string name,
                            char separator) {
   size_t position;
   std::string token;
-  position = getPosition(name, line) + name.length() + 1;
-  std::stringstream stream(line->substr(position));
+  position = get_position(name, line) + name.length() + 1;
+  std::stringstream stream(line.substr(position));
   getline(stream, token, separator);
   return token;
 }
 
-int TraceLogParser::get_stateId(const std::string *line) {
+int TraceLogParser::get_state_id(const std::string &line) {
   size_t position;
   std::string token;
   std::string probe = "State";
-  position = getPosition(probe, line) + probe.length() + 1;
-  std::stringstream stream(line->substr(position));
+  position = get_position(probe, line) + probe.length() + 1;
+  std::stringstream stream(line.substr(position));
   getline(stream, token, ']');
   return stoi(token);
 }
 
-std::string TraceLogParser::get_execution_time(const std::string *line, std::string name) {
+std::string TraceLogParser::get_execution_time(const std::string &line, std::string name) {
   return get_count_base(line, name, ';');
 }
 
-std::string TraceLogParser::get_address(const std::string *line, std::string name) {
+std::string TraceLogParser::get_address(const std::string &line, std::string name) {
   return get_count_base(line, name, ';');
 }
 
-std::string TraceLogParser::get_count(const std::string *line, std::string name) {
+std::string TraceLogParser::get_count(const std::string &line, std::string name) {
   return get_count_base(line, name, ';');
 }
 
-
-bool TraceDatParser::parse(std::map<int, stateRecord> &records)
+bool TraceDatParser::parse(StateCostTable *table)
 {
   // Must open the dat file in binary mode
   std::ifstream dat_file(m_fileName, std::ios::in | std::ios::binary);
@@ -158,6 +157,8 @@ bool TraceDatParser::parse(std::map<int, stateRecord> &records)
     // read the struct at once. For this to work, the size should be the same
     // as when the item is serialized.
     dat_file.read((char *)&item, sizeof(item));
+    if (!dat_file)
+      break;
     parsed_cnt++;
     // if the struct padding disabling fails, we will need to uncomment the
     // following and retrieve the field one by one
@@ -174,9 +175,9 @@ bool TraceDatParser::parse(std::map<int, stateRecord> &records)
     // std::cout << "parsed state " << item.state_id << " address 0x" << std::setw(16) << std::setfill('0') << std::hex << item.address << std::endl;
     
     // FIXME: write syscall and instr cnt to the trace file and update the state record
-    functionTracer function_trace(item.address, item.callerAddress, 
+    FunctionTraceItem trace_item(item.address, item.callerAddress,
         item.acticityId, item.parentId, item.execution_time);
-    add_trace(records, item.state_id, function_trace);
+    add_trace_item(table, item.state_id, trace_item);
   }
   dat_file.close();
   std::cout << "Successfully parsed " << parsed_cnt << " trace records from " << m_fileName << std::endl;

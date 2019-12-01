@@ -9,13 +9,12 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
-#ifndef __PARSER_H_
-#define __PARSER_H_
+#ifndef VIOLET_ANALYZER_PARSER_H
+#define VIOLET_ANALYZER_PARSER_H
 
 #include <iostream>
 #include <sstream>
-#include "stateRecord.h"
-#include "functionTracer.h"
+#include "trace.h"
 
 // The base class for latency trace file parser
 class TraceParserBase {
@@ -28,9 +27,9 @@ class TraceParserBase {
     {
     }
 
-    virtual bool parse(std::map<int, stateRecord> &records) = 0;
-    virtual void add_trace(std::map<int, stateRecord> &records, int state_id, 
-        functionTracer &trace);
+    virtual bool parse(StateCostTable *table) = 0;
+    virtual void add_trace_item(StateCostTable *table, int state_id, 
+        FunctionTraceItem &item);
 };
 
 // Parse the violet plugin output from the S2E log debug.txt
@@ -45,18 +44,18 @@ class TraceLogParser: public TraceParserBase {
     {
     }
 
-    bool parse(std::map<int, stateRecord> &records);
+    bool parse(StateCostTable *table);
     
-    static std::string get_address(const std::string *line, std::string name);
-    static std::string get_execution_time(const std::string *line, std::string name);
+    static std::string get_address(const std::string &line, std::string name);
+    static std::string get_execution_time(const std::string &line, std::string name);
 
   private:
-    static size_t getPosition(std::string filter, const std::string *line);
-    static int get_stateId(const std::string *line);
-    static std::string get_count(const std::string *line, std::string name);
-    static std::string get_count_base(const std::string *line, std::string name,
+    static size_t get_position(const std::string &filter, const std::string &line);
+    static int get_state_id(const std::string &line);
+    static std::string get_count(const std::string &line, std::string name);
+    static std::string get_count_base(const std::string &line, std::string name,
                                char separator);
-    static bool is_caseResult(std::string line);
+    static bool is_case_result(const std::string &line);
 };
 
 // The trace data record that is serialized in the trace file
@@ -85,7 +84,7 @@ class TraceDatParser: public TraceParserBase {
     {
     }
 
-    bool parse(std::map<int, stateRecord> &records);
+    bool parse(StateCostTable *table);
 };
 
-#endif /* __PARSER_H_ */
+#endif /* VIOLET_ANALYZER_PARSER_H */
