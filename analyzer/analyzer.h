@@ -20,8 +20,6 @@
 
 int parse_options(int argc, char **argv);
 
-void create_critical_path(int state, StateCostRecord record, std::ofstream *parsed_log);
-
 bool dtl_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &first_trace, FunctionTrace &second_trace,
     FunctionTrace &diff_trace);
@@ -30,6 +28,7 @@ bool gnu_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &diff_trace);
 bool compute_diff_latency(FunctionTrace &first_trace, 
     FunctionTrace &second_trace, FunctionTrace &diff_trace);
+void compute_critical_path(StateCostRecord *record);
 
 void analyze_cost_table(StateCostTable *cost_table, std::string output_path);
 int analyzer_main(int argc, char **argv);

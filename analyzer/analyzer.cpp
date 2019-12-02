@@ -30,6 +30,7 @@ using dtl::uniHunk;
 
 struct analyzer_config config;
 std::ofstream analysis_log;
+std::ofstream result_file;
 
 cxxopts::Options add_options() {
   cxxopts::Options options("Log analyzer", "Analyze the log of s2e result");
@@ -113,11 +114,10 @@ int analyzer_main(int argc, char **argv) {
 
 void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
   analysis_log.open("violet_trace_analysis.log");
-  std::ofstream result_file;
   if (config.append_output)
-    result_file.open(output_path);
-  else
     result_file.open(output_path, std::fstream::app);
+  else
+    result_file.open(output_path);
 
   mkdir(config.outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
@@ -125,6 +125,14 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
 
   // diff of any pair-wise records in the cost table
   for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
+    std::stringstream trace_file_name_ss;
+    trace_file_name_ss << config.outdir << "/violet_trace_state_" << it->first << ".csv";
+    std::ofstream trace_file(trace_file_name_ss.str());
+    trace_file << FunctionTraceItem::csv_header() << std::endl;
+    for (FunctionTrace::iterator fit = it->second.trace.begin(); fit != it->second.trace.end(); ++fit) {
+      trace_file << fit->to_csv() << std::endl;
+    }
+    trace_file.close();
     StateCostTable::iterator jt = it;
     for (++jt; jt != cost_table->end(); ++jt) {
       StateCostRecord *first_record = &it->second;
@@ -155,10 +163,12 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
           second_record->trace, diff_trace);
       analysis_log << "obtained a diff trace of size " << diff_trace.size() << std::endl;
       if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
-        analysis_log << "Successfully computed the diff latency for " << 
+        analysis_log << "computed the diff latency for " << 
           second_record->trace.size() << " trace items " << std::endl;
+        compute_critical_path(second_record);
+        std::cout << "Successfully computed the differential critical path for state pair <" 
+          << first_record->id << "," << second_record->id << ">" << std::endl;
       }
-      // TODO: compute the critical path
     }
   }
   for (auto record_iterator = cost_table->begin();
@@ -172,6 +182,10 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
            << record_iterator->second.execution_time << "ms\n";
   }
   analysis_log.close();
+  result_file.close();
+  std::cout << "Analysis log is written to violet_trace_analysis.log." << std::endl
+    << "The result is written to " << config.output_path << std::endl
+    << "Intermediate data is written to directory '" << config.outdir << "'" << std::endl;
 }
 
 bool compute_diff_latency(FunctionTrace &first_trace, 
@@ -322,18 +336,18 @@ bool gnu_diff_trace(int first_trace_id, int second_trace_id,
   std::stringstream ss1, ss2;
   ss1 << config.outdir << "/violet_trace_state_" << first_trace_id << "_keys.txt";
   ss2 << config.outdir << "/violet_trace_state_" << second_trace_id << "_keys.txt";
-  std::ofstream trace_file1(ss1.str()), trace_file2(ss2.str());
+  std::ofstream trace_key1(ss1.str()), trace_key2(ss2.str());
   for (FunctionTrace::iterator fit = first_trace.begin(); fit != first_trace.end(); ++fit) {
     // Here we must output the hash key of the trace item, which does not include
     // the execution time. Otherwise, almost each line will be different.
-    trace_file1 << fit->hash_key() << std::endl;
+    trace_key1 << fit->hash_key() << std::endl;
   }
-  trace_file1.close();
+  trace_key1.close();
   for (FunctionTrace::iterator fit = second_trace.begin(); fit != second_trace.end(); ++fit) {
     // Similarly, we need to output the hash key
-    trace_file2 << fit->hash_key() << std::endl;
+    trace_key2 << fit->hash_key() << std::endl;
   }
-  trace_file2.close();
+  trace_key2.close();
   std::stringstream diff_log_name;
   diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
     << second_trace_id << ".diff";
@@ -409,4 +423,36 @@ bool gnu_diff_trace(int first_trace_id, int second_trace_id,
   }
   pure_diff_log.close();
   return true;
+}
+
+void compute_critical_path(StateCostRecord *record)
+{
+  uint64_t parent_id = 0;
+  result_file << "[State " << record->id << "] critical path:" << std::endl;
+  for (int i = 0; i < 15; i++) {
+    double max_diff = 0;
+    int max_idx = -1;
+    int idx = 0;
+    for (FunctionTrace::iterator fit = record->trace.begin();
+        fit != record->trace.end(); ++fit, ++idx) {
+      if (fit->parent_id == parent_id) {
+        if (fit->activity_id == parent_id) {
+          // this mainly happens for the entry function (activity_id = parent_id = 0)
+          // we should skip this function, otherwise the entire critical path will
+          // only contain the entry function.
+          continue;
+        }
+        const std::string function_str = hexval(fit->function).str();
+        if (fit->diff.latency > max_diff) {
+          max_diff = fit->diff.latency;
+          max_idx = idx;
+        }
+      }
+    }
+    if (max_idx < 0)
+      break;
+    const FunctionTraceItem &result = record->trace[max_idx];
+    result_file << "\t=> " << result << std::endl;
+    parent_id = result.activity_id;
+  }
 }
