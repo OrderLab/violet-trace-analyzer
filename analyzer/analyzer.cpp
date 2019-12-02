@@ -12,26 +12,30 @@
 #include "analyzer.h"
 #include "cxxopts/cxxopts.hpp"
 #include "dtl/dtl.hpp"
-#include "sys_var.h"
+#include "config.h"
 #include "parser.h"
 
 #include <assert.h>
 #include <fstream>
 #include <regex>
+#include <ctime>
+#include <sys/stat.h>
 
 using dtl::Diff;
 using dtl::elemInfo;
 using dtl::uniHunk;
 
-struct system_variables config;
+struct analyzer_config config;
+std::ofstream analysis_log;
 
 cxxopts::Options add_options() {
   cxxopts::Options options("Log analyzer", "Analyze the log of s2e result");
 
   options.add_options()
-      ("p,path", "input file name", cxxopts::value<std::string>())
+      ("i,input", "input file name", cxxopts::value<std::string>())
       ("o,output", "output file name", cxxopts::value<std::string>())
-      ("overwrite", "is overwrite", cxxopts::value<bool>())
+      ("d,outdir", "output directory", cxxopts::value<std::string>())
+      ("append", "append to output file", cxxopts::value<bool>())
       ("help", "Print help message");
 
   return options;
@@ -50,17 +54,22 @@ int parse_options(int argc, char **argv) {
       std::cout << options.help() << std::endl;
       exit(0);
     }
-    if (!result.count("path")) {
-      throw cxxopts::option_required_exception("path");
+    if (!result.count("input")) {
+      throw cxxopts::option_required_exception("input");
     }
     if (!result.count("output")) {
       throw cxxopts::option_required_exception("output");
     }
-    config.log_path = result["path"].as<std::string>();
+    if (result.count("outdir")) {
+      config.outdir = result["outdir"].as<std::string>();
+    } else {
+      config.outdir = "output";
+    }
+    config.input_path = result["input"].as<std::string>();
     config.output_path = result["output"].as<std::string>();
-    config.is_overwrite = result["overwrite"].as<bool>();
-    if (!file_exists(config.log_path)) {
-      std::cerr << "Log file " << config.log_path
+    config.append_output = result["append"].as<bool>();
+    if (!file_exists(config.input_path)) {
+      std::cerr << "Input file " << config.input_path
                 << "does not exist" << std::endl;
       return -1;
     }
@@ -75,199 +84,227 @@ int parse_options(int argc, char **argv) {
 int analyzer_main(int argc, char **argv) {
   std::string line;
   std::string expression = "LatencyTracker: Function";
-  std::map<int, stateRecord> cost_table;
+  StateCostTable cost_table;
 
   if (parse_options(argc, argv) < 0) {
     exit(1);
   }
 
   TraceParserBase *parser;
-  std::string log_ext = config.log_path.substr(config.log_path.size() - 4, 4);
+  std::string log_ext = config.input_path.substr(config.input_path.size() - 4, 4);
   if (log_ext.compare(".txt") == 0) {
-    parser = new TraceLogParser(config.log_path);
+    parser = new TraceLogParser(config.input_path);
   } else {
     // if the input file ends with anything other than .txt, we will use
     // the binary trace parser.
-    parser = new TraceDatParser(config.log_path);
+    parser = new TraceDatParser(config.input_path);
   }
 
-  if (!parser->parse(cost_table)) {
+  if (!parser->parse(&cost_table)) {
     exit(1);
   }
 
-  generateTestCases(&cost_table, config.output_path);
+  analyze_cost_table(&cost_table, config.output_path);
   return 0;
 }
 
-void generateTestCases(std::map<int, stateRecord> *cost_table,
-                       std::string output_path) {
-  std::ofstream parsed_log;
-  parsed_log.open("temp.log");
+void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
+  analysis_log.open("violet_trace_analysis.log");
+  std::ofstream result_file;
+  if (config.append_output)
+    result_file.open(output_path);
+  else
+    result_file.open(output_path, std::fstream::app);
 
-  if (((*cost_table)[1].execution_time - (*cost_table)[0].execution_time) /
-          (*cost_table)[0].execution_time >
-      0.2) {
-    unifiedDiff((*cost_table)[0].trace, (*cost_table)[1].trace, parsed_log);
-    parsed_log.close();
+  mkdir(config.outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    diffTrace(cost_table);
-    std::ofstream result;
-    if (config.is_overwrite)
-      result.open(output_path);
-    else
-      result.open(output_path, std::fstream::app);
-    for (auto record_iterator = cost_table->begin();
-         record_iterator != cost_table->end(); ++record_iterator) {
-      result << "[State " << record_iterator->first
-             << "] => the number of instruction is "
-             << record_iterator->second.instruction_count
-             << ",the number of syscall is "
-             << record_iterator->second.syscall_count
-             << ", the total execution time "
-             << record_iterator->second.execution_time << "ms\n";
-    }
-    create_critical_path(1, (*cost_table)[1], &result);
-    result.close();
-  } else {
-    std::ofstream result;
-    result.open(output_path);
-    for (auto record_iterator = cost_table->begin();
-         record_iterator != cost_table->end(); ++record_iterator) {
-      result << "[State " << record_iterator->first
-             << "] => the number of instruction is "
-             << record_iterator->second.instruction_count
-             << ",the number of syscall is "
-             << record_iterator->second.syscall_count
-             << ", the total execution time "
-             << record_iterator->second.execution_time << "ms\n";
-    }
-  }
-}
+  double latency_diff_percent_threshold = 0.2;
 
-void create_critical_path(int state, stateRecord state_record,
-                          std::ofstream *parsed_log) {
-  uint64_t parentId = 0;
-  for (int i = 0; i < 15; i++) {
-    double m_diff = 0;
-    functionTracer result;
-    int postion = 0;
-    int count = 0;
-    for (std::vector<functionTracer>::iterator function_trace =
-             state_record.trace.begin();
-         function_trace != state_record.trace.end(); function_trace++) {
-      count++;
-      if (function_trace->parentId == parentId) {
-        const std::string function_str = hexval(function_trace->function).str();
-        // FIXME: what are the hard-coded strings for???
-        if (function_trace->diff_execution > m_diff &&
-            function_str != "0x59a448" && function_str != "0x3d98cb") {
-          m_diff = function_trace->diff_execution;
-          postion = count;
-        }
+  // diff of any pair-wise records in the cost table
+  for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
+    {
+      std::stringstream trace_name;
+      trace_name << config.outdir << "/" << "violet_trace_state_" << it->second.id << ".txt";
+      std::ofstream trace_file(trace_name.str());
+      for (FunctionTrace::iterator fit = it->second.trace.begin(); fit != it->second.trace.end(); ++fit) {
+        trace_file << *fit << std::endl;
       }
+      trace_file.close();
     }
-    if (postion == 0) break;
-    result = state_record.trace[postion - 1];
-    (*parsed_log) << "[State " << state << "]"
-                  << " Function " << result.function << ", caller "
-                  << result.caller << ",activityId " << result.activityId
-                  << ",parentId " << result.parentId << ", execution time "
-                  << result.execution_time << "; diff time "
-                  << result.diff_execution << "ms\n";
-    parentId = result.activityId;
+    StateCostTable::iterator jt = it;
+    for (++jt; jt != cost_table->end(); ++jt) {
+      StateCostRecord *first_record = &it->second;
+      StateCostRecord *second_record = &jt->second;
+      if (it->second.execution_time > jt->second.execution_time) {
+        // ensure second_record always has larger execution time
+        analysis_log << "state " << it->first << "'s execution time " << 
+          it->second.execution_time << " > state " << jt->first << 
+          "'s execution_time " << jt->second.execution_time << std::endl;
+        first_record = &jt->second;
+        second_record = &it->second;
+      }
+      double latency_diff_percent = 1.0 * (second_record->execution_time - 
+          first_record->execution_time) / first_record->execution_time;
+      analysis_log << "execution time for state " << first_record->id << 
+        " and state " << second_record->id << " differ by " << latency_diff_percent << std::endl;
+      if (latency_diff_percent < latency_diff_percent_threshold) {
+        // latencies are similar, skip diff
+        continue;
+      }
+      analysis_log << "comparing cost record for state " << first_record->id << 
+        " and state " << second_record->id << std::endl;
+      std::stringstream diff_log_name;
+      diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_record->id<< "_" 
+        << second_record->id << ".diff";
+      std::ofstream diff_log(diff_log_name.str());
+      FunctionTrace diff_trace;
+      unified_diff_trace(first_record->id, second_record->id, first_record->trace, 
+          second_record->trace, diff_trace, diff_log);
+      diff_log.close();
+      analysis_log << "obtained a diff trace of size " << diff_trace.size() << std::endl;
+      compute_diff_latency(first_record->trace, second_record->trace, diff_trace);
+    }
   }
+  for (auto record_iterator = cost_table->begin();
+       record_iterator != cost_table->end(); ++record_iterator) {
+    result_file << "[State " << record_iterator->first
+           << "] => the number of instruction is "
+           << record_iterator->second.instruction_count
+           << ",the number of syscall is "
+           << record_iterator->second.syscall_count
+           << ", the total execution time "
+           << record_iterator->second.execution_time << "ms\n";
+  }
+  analysis_log.close();
 }
 
-void diffTrace(std::map<int, stateRecord> *cost_table) {
-  std::ifstream diff_log("temp.log");
-  if (diff_log.is_open()) {
-    while (diff_log.good()) {
-      bool symbol;
-      functionTracer function_trace;
-      std::string line;
-      getline(diff_log, line);
-      if (line == "") continue;
-      symbol = get_diff(&line);
-      std::string function = TraceLogParser::get_address(&line, "Function");
-      std::string execution = TraceLogParser::get_execution_time(&line, "runs");
-      function_trace.function = s2f<uint64_t>(function);
-      function_trace.execution_time = s2f<double>(execution);
-      function_trace.diff_flag = symbol;
-      (*cost_table)[1].diff_trace.push_back(function_trace);
-    }
-  }
-  size_t count = 0;
-  size_t diff_count = 0;
-  size_t diff_size = (*cost_table)[1].diff_trace.size();
-  size_t size = (*cost_table)[0].trace.size();
-  // FIXME: continuing with size 0 will cause count to be -1
-  if (size == 0) {
-    std::cerr << "Warning: original trace size is zero " << std::endl;
-    return;
-  }
-  for (auto record = (*cost_table)[1].trace.begin();
-       record != (*cost_table)[1].trace.end(); ++record) {
-    if (count >= size) {
-      count = size - 1;
-    }
+bool compute_diff_latency(FunctionTrace &first_trace, 
+    FunctionTrace &second_trace, FunctionTrace &diff_trace)
+{
+  size_t first_idx = 0, second_idx = 0, diff_idx = 0;
+  size_t first_size = first_trace.size();
+  size_t second_size = second_trace.size();
+  size_t diff_size = diff_trace.size();
 
-    if (diff_count >= diff_size) {
-      diff_count = diff_size - 1;
+  long long diff_pos = -1;
+  FunctionTraceItem *first_item = NULL, *second_item = NULL, *diff_item = NULL;
+  while (second_idx < second_size) {
+    if (diff_idx < diff_size) {
+      diff_item = &diff_trace.at(diff_idx);
+      diff_pos = diff_item->diff.position;
+    } else{
+      diff_item = NULL;
+      diff_pos = -1;
     }
-
-    functionTracer original_trace = (*cost_table)[0].trace.at(count);
-    functionTracer diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
-
-    while (!diff_trace.diff_flag &&
-           (diff_trace.function == original_trace.function)) {
-      count++;
-      diff_count++;
-      original_trace = (*cost_table)[0].trace.at(count);
-      diff_trace = (*cost_table)[1].diff_trace.at(diff_count);
-    }
-    if (original_trace.function == record->function) {
-      record->diff_execution = record->execution_time - original_trace.execution_time;
-      count++;
-    } else if (diff_trace.diff_flag &&
-               (diff_trace.function == record->function)) {
-      record->diff_execution = record->execution_time;
-      diff_count++;
+    long long *common_idx;
+    long long *common_size;
+    if (diff_pos >= 0 && diff_item != NULL) {
+      if (diff_item->diff.flag == DIFF_DEL || diff_item->diff.flag == DIFF_COM) {
+        common_idx = (long long *) &first_idx;
+        common_size = &diff_pos;
+      } else if (diff_item->diff.flag == DIFF_ADD) {
+        common_idx = (long long *) &second_idx;
+        common_size = &diff_pos;
+      } else {
+        common_idx = (long long *) &second_idx;
+        common_size = (long long *) &second_size;
+      }
     } else {
-      // FIXME: what error??
-      std::cerr << "An error occurred " << std::endl;
+      common_idx = (long long *) &second_idx;
+      common_size = (long long *) &second_size;
+    }
+    assert(*common_idx <= *common_size);
+    while (*common_idx < *common_size) {
+      assert(first_idx < first_size);
+      assert(second_idx < second_size);
+      first_item = &first_trace.at(first_idx);
+      second_item = &second_trace.at(second_idx);
+      assert(first_item->function == second_item->function);
+      second_item->diff.latency = second_item->execution_time - first_item->execution_time;
+      second_idx++;
+      first_idx++;
+    }
+    assert(*common_idx == diff_pos);
+    if (diff_item->diff.flag == DIFF_COM) {
+      first_item = &first_trace.at(first_idx);
+      second_item = &second_trace.at(second_idx);
+      assert(first_item->function == second_item->function);
+      second_item->diff.latency = second_item->execution_time - first_item->execution_time;
+    } else if (diff_item->diff.flag == DIFF_ADD) {
+      second_item = &second_trace.at(second_idx);
+      second_item->diff.latency = second_item->execution_time;
+    }
+    *common_idx = *common_idx + 1;
+    if (diff_pos >= 0 && diff_item != NULL) {
+      diff_idx++;
     }
   }
+  return true;
 }
 
-bool get_diff(const std::string *line) {
-  std::string token;
-  std::stringstream stream(*line);
-  getline(stream, token, ';');
-  if (token == "+") {
-    return true;
-  } else if (token == "-") {
-    return false;
+inline DiffChangeFlag get_change_flag(const std::string &line) {
+  if (line.size() == 0) {
+    return DIFF_NA;
   }
-  assert(false);  // should reach here
-  return false;
+  char c = line.at(0);
+  if (c == '+') {
+    return DIFF_ADD;
+  } else if (c == '-') {
+    return DIFF_DEL;
+ } else if (c == ' ') {
+    return DIFF_COM;
+  }
+  return DIFF_NA;
 }
 
-// bool cmp()
-//
-// vector<functionTracer*>x(N, NULL);
-// sort(x.begin(), x.end(), cmp);
-// res = unique(x.begin(), x.end(), cmp);
-// x.resize(distance(x.begin(), res));
-// lower_bound(x.begin(), x.end(), cmp, elem);
-
-void unifiedDiff(std::vector<functionTracer> original_trace,
-                 std::vector<functionTracer> changed_trace,
-                 std::ofstream &parsed_log) {
-  dtl::Diff<functionTracer, std::vector<functionTracer> > diff(original_trace,
-                                                               changed_trace);
+bool unified_diff_trace(int first_trace_id, int second_trace_id,
+    FunctionTrace &first_trace, FunctionTrace &second_trace,
+    FunctionTrace &diff_trace, std::ofstream &diff_log) {
+  std::time_t now = std::time(nullptr);
+  {
+    std::stringstream ss1, ss2;
+    ss1 << "violet_trace_state_" << first_trace_id;
+    ss2 << "violet_trace_state_" << second_trace_id;
+    diff_log << "--- "<< ss1.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+    now = std::time(nullptr);
+    diff_log << "+++ "<< ss2.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+  }
+  dtl::Diff<FunctionTraceItem, FunctionTrace > diff(first_trace, second_trace);
   diff.onHuge();
   diff.compose();
 
   diff.composeUnifiedHunks();
-  diff.printUnifiedFormat(parsed_log);
+  diff.printUnifiedFormat(diff_log, true);
+  auto &hunks = diff.getUniHunks();
+  long long old_a = -1, old_c = -1, old_idx = -1, new_idx = -1;
+  for (auto hit = hunks.begin(); hit != hunks.end(); ++hit) {
+    // FIXME: the dtl library is buggy, it will output incorrect hunk information
+    // we should probably use the `diff' command line directly.
+    if ((old_a > 0 && hit->a < old_a) || (old_c > 0 && hit->c < old_c)) {
+      std::cerr << "unsorted hunk detected at " << "@@ -" << hit->a << "," << hit->b << " +" << hit->c << "," << hit->d << " @@" << std::endl;
+      old_a = hit->a;
+      old_c = hit->c;
+      continue;
+    }
+    old_a = hit->a;
+    old_c = hit->c;
+    old_idx = hit->a + hit->common[0].size() - 1;
+    new_idx = hit->c + hit->common[0].size() - 1;
+    for (auto cit = hit->change.begin(); cit != hit->change.end(); ++cit) {
+      FunctionTraceItem item = cit->first;
+      if (cit->second.type == dtl::SES_ADD) {
+        item.diff.flag = DIFF_ADD;
+        item.diff.position = new_idx++;
+        diff_trace.push_back(item);
+      } else if (cit->second.type == dtl::SES_DELETE) {
+        item.diff.flag = DIFF_DEL;
+        item.diff.position = old_idx++;
+        diff_trace.push_back(item);
+      } else if (cit->second.type == dtl::SES_COMMON) {
+        old_idx++;
+        new_idx++;
+      }
+    }
+  }
+  return true;
 }
