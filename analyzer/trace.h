@@ -72,7 +72,22 @@ class FunctionTraceItem {
     }
 
     friend std::ostream &operator<<(std::ostream &o, const FunctionTraceItem &t) {
-      return o << "; Function " << hexval(t.function) << "; runs " << t.execution_time;
+      return o << "function " << hexval(t.function) << ",caller "
+                  << hexval(t.caller) << ",activity_id " << t.activity_id
+                  << ",parent_id " << t.parent_id << ",execution time "
+                  << t.execution_time << "ms,diff time "
+                  << t.diff.latency << "ms";
+    }
+
+    static inline const char *csv_header() {
+      return "function,caller,activity_id,parent_id,execution_time(ms),diff_time(ms)";
+    }
+
+    inline std::string to_csv() const {
+      std::stringstream ss;
+      ss << hexval(function) << "," << hexval(caller) << "," << activity_id << 
+        "," << parent_id << "," << execution_time << "," << diff.latency;
+      return ss.str();
     }
 
     inline std::string hash_key() const {
