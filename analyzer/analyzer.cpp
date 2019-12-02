@@ -155,7 +155,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
       if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
         analysis_log_ << "computed the diff latency for " << 
           second_record->trace.size() << " trace items " << endl;
-        compute_critical_path(second_record);
+        compute_critical_path(second_record, first_record->id);
         cout << "Successfully computed the differential critical path for state pair <" 
           << first_record->id << "," << second_record->id << ">" << endl;
       }
@@ -406,10 +406,11 @@ bool VioletTraceAnalyzer::gnu_diff_trace(int first_trace_id, int second_trace_id
   return true;
 }
 
-void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record)
+void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int base_trace_id)
 {
   uint64_t parent_id = 0;
-  result_file_ << "[State " << record->id << "] critical path:" << endl;
+  result_file_ << "[State " << record->id << "] critical path (compared to state " 
+   << base_trace_id << ") :" << endl;
   for (int i = 0; i < 15; i++) {
     double max_diff = 0;
     int max_idx = -1;

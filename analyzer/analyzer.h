@@ -37,7 +37,7 @@ class VioletTraceAnalyzer {
         FunctionTrace &diff_trace);
     bool compute_diff_latency(FunctionTrace &first_trace, 
         FunctionTrace &second_trace, FunctionTrace &diff_trace);
-    void compute_critical_path(StateCostRecord *record);
+    void compute_critical_path(StateCostRecord *record, int base_trace_id);
     void analyze_cost_table(StateCostTable *cost_table);
 
     static DiffChangeFlag get_change_flag(const std::string &line);
