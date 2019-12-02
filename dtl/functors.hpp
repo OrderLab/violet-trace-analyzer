@@ -77,8 +77,12 @@ namespace dtl {
     class ChangePrinter : public Printer < sesElem, stream >
     {
     public :
-        ChangePrinter  ()            : Printer < sesElem, stream > ()    {}
-        ChangePrinter  (stream& out) : Printer < sesElem, stream > (out) {}
+        ChangePrinter  (bool print_common=true)  : Printer < sesElem, stream > () {
+            print_common_ = print_common;
+        }
+        ChangePrinter  (stream& out, bool print_common=true) : Printer < sesElem, stream > (out) {
+            print_common_ = print_common;
+        }
         ~ChangePrinter () {}
         void operator() (const sesElem& se) const {
             switch (se.second.type) {
@@ -88,11 +92,14 @@ namespace dtl {
             case SES_DELETE:
                 this->out_ << SES_MARK_DELETE << se.first << endl;
                 break;
-//            case SES_COMMON:
-//                this->out_ << SES_MARK_COMMON << se.first << endl;
-//                break;
+            case SES_COMMON:
+                if (print_common_)
+                  this->out_ << SES_MARK_COMMON << se.first << endl;
+                break;
             }
         }
+    private :
+        bool print_common_;
     };
     
     /**
@@ -102,21 +109,28 @@ namespace dtl {
     class UniHunkPrinter
     {
     public :
-        UniHunkPrinter  ()            : out_(cout) {}
-        UniHunkPrinter  (stream& out) : out_(out)  {}
+        UniHunkPrinter  (bool print_context=true) : out_(cout), 
+            print_context_(print_context) {}
+        UniHunkPrinter  (stream& out, bool print_context=true) : out_(out),
+            print_context_(print_context) {}
         ~UniHunkPrinter () {}
         void operator() (const uniHunk< sesElem >& hunk) const {
-//            out_ << "@@"
-//                 << " -"  << hunk.a << "," << hunk.b
-//                 << " +"  << hunk.c << "," << hunk.d
-//                 << " @@" << endl;
-//
-//            for_each(hunk.common[0].begin(), hunk.common[0].end(), CommonPrinter< sesElem, stream >(out_));
-            for_each(hunk.change.begin(),    hunk.change.end(),    ChangePrinter< sesElem, stream >(out_));
-//            for_each(hunk.common[1].begin(), hunk.common[1].end(), CommonPrinter< sesElem, stream >(out_));
+            if (print_context_) {
+                out_ << "@@"
+                     << " -"  << hunk.a << "," << hunk.b
+                     << " +"  << hunk.c << "," << hunk.d
+                     << " @@" << endl;
+
+                for_each(hunk.common[0].begin(), hunk.common[0].end(), CommonPrinter< sesElem, stream >(out_));
+            }
+            for_each(hunk.change.begin(),    hunk.change.end(),    ChangePrinter< sesElem, stream >(out_, print_context_));
+            if (print_context_) {
+                for_each(hunk.common[1].begin(), hunk.common[1].end(), CommonPrinter< sesElem, stream >(out_));
+            }
         }
     private :
         stream& out_;
+        bool print_context_;
     };
     
     /**

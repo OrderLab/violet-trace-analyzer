@@ -112,7 +112,7 @@ namespace dtl {
             return ses;
         }
         
-        uniHunkVec getUniHunks () const {
+        const uniHunkVec &getUniHunks () const {
             return uniHunks;
         }
         
@@ -345,8 +345,9 @@ namespace dtl {
          * print difference between A and B in the Unified Format
          */
         template < typename stream >
-        void printUnifiedFormat (stream& out) const {
-            for_each(uniHunks.begin(), uniHunks.end(), UniHunkPrinter< sesElem, stream >(out));
+        void printUnifiedFormat (stream& out, bool print_context=true) const {
+            for_each(uniHunks.begin(), uniHunks.end(), UniHunkPrinter< sesElem, 
+                stream >(out, print_context));
         }
         
         void printUnifiedFormat (ostream& out = cout) const {
