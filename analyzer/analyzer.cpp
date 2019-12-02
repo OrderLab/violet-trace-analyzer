@@ -2,6 +2,7 @@
 // The Violet Project
 //
 // Created by yigonghu on 11/13/19.
+// Rewritten by ryanhuang on 11/30/19.
 //
 // Copyright (c) 2019, Johns Hopkins University - Order Lab.
 //
@@ -16,7 +17,7 @@
 #include "parser.h"
 
 #include <assert.h>
-#include <fstream>
+#include <errno.h>
 #include <regex>
 #include <ctime>
 #include <sys/stat.h>
@@ -28,25 +29,25 @@ using dtl::Diff;
 using dtl::elemInfo;
 using dtl::uniHunk;
 
+using namespace std;
+
 struct analyzer_config config;
-std::ofstream analysis_log;
-std::ofstream result_file;
 
 cxxopts::Options add_options() {
   cxxopts::Options options("Log analyzer", "Analyze the log of s2e result");
 
   options.add_options()
-      ("i,input", "input file name", cxxopts::value<std::string>())
-      ("o,output", "output file name", cxxopts::value<std::string>())
-      ("d,outdir", "output directory", cxxopts::value<std::string>())
+      ("i,input", "input file name", cxxopts::value<string>())
+      ("o,output", "output file name", cxxopts::value<string>())
+      ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
       ("help", "Print help message");
 
   return options;
 }
 
-inline bool file_exists(const std::string &name) {
-  std::ifstream f(name.c_str());
+inline bool file_exists(const string &name) {
+  ifstream f(name.c_str());
   return f.good();
 }
 
@@ -55,7 +56,7 @@ int parse_options(int argc, char **argv) {
   try {
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
-      std::cout << options.help() << std::endl;
+      cout << options.help() << endl;
       exit(0);
     }
     if (!result.count("input")) {
@@ -65,72 +66,61 @@ int parse_options(int argc, char **argv) {
       throw cxxopts::option_required_exception("output");
     }
     if (result.count("outdir")) {
-      config.outdir = result["outdir"].as<std::string>();
+      config.outdir = result["outdir"].as<string>();
     } else {
       config.outdir = "output";
     }
-    config.input_path = result["input"].as<std::string>();
-    config.output_path = result["output"].as<std::string>();
+    config.input_path = result["input"].as<string>();
+    config.output_path = result["output"].as<string>();
     config.append_output = result["append"].as<bool>();
     if (!file_exists(config.input_path)) {
-      std::cerr << "Input file " << config.input_path
-                << "does not exist" << std::endl;
+      cerr << "Input file " << config.input_path
+                << "does not exist" << endl;
       return -1;
     }
     return 0;
   } catch (const cxxopts::OptionException &e) {
-    std::cerr << "Error in parsing options: " << e.what() << std::endl;
-    std::cerr << std::endl << options.help() << std::endl;
+    cerr << "Error in parsing options: " << e.what() << endl;
+    cerr << endl << options.help() << endl;
     return -1;
   }
 }
 
-int analyzer_main(int argc, char **argv) {
-  std::string line;
-  std::string expression = "LatencyTracker: Function";
-  StateCostTable cost_table;
-
-  if (parse_options(argc, argv) < 0) {
-    exit(1);
-  }
-
-  TraceParserBase *parser;
-  std::string log_ext = config.input_path.substr(config.input_path.size() - 4, 4);
-  if (log_ext.compare(".txt") == 0) {
-    parser = new TraceLogParser(config.input_path);
-  } else {
-    // if the input file ends with anything other than .txt, we will use
-    // the binary trace parser.
-    parser = new TraceDatParser(config.input_path);
-  }
-
-  if (!parser->parse(&cost_table)) {
-    exit(1);
-  }
-
-  analyze_cost_table(&cost_table, config.output_path);
-  return 0;
+VioletTraceAnalyzer::VioletTraceAnalyzer(string log_path, string outdir, string output_path, 
+    bool append_output): log_path_(log_path), out_dir_(outdir), out_path_(output_path)
+{
+  analysis_log_.open(log_path);
+  if (append_output)
+    result_file_.open(output_path, fstream::app);
+  else
+    result_file_.open(output_path);
 }
 
-void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
-  analysis_log.open("violet_trace_analysis.log");
-  if (config.append_output)
-    result_file.open(output_path, std::fstream::app);
-  else
-    result_file.open(output_path);
+bool VioletTraceAnalyzer::init()
+{
+  int ret = mkdir(out_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0;
+  if (ret != 0) {
+    if (errno == EEXIST) // ignore dir exists error
+      return true;
+    return false;
+  }
+  return true;
+}
 
-  mkdir(config.outdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
+VioletTraceAnalyzer::~VioletTraceAnalyzer()
+{
+  analysis_log_.close();
+  result_file_.close();
+}
+void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
   double latency_diff_percent_threshold = 0.2;
 
   // diff of any pair-wise records in the cost table
   for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
-    std::stringstream trace_file_name_ss;
-    trace_file_name_ss << config.outdir << "/violet_trace_state_" << it->first << ".csv";
-    std::ofstream trace_file(trace_file_name_ss.str());
-    trace_file << FunctionTraceItem::csv_header() << std::endl;
+    ofstream trace_file(get_trace_file_name(it->first));
+    trace_file << FunctionTraceItem::csv_header() << endl;
     for (FunctionTrace::iterator fit = it->second.trace.begin(); fit != it->second.trace.end(); ++fit) {
-      trace_file << fit->to_csv() << std::endl;
+      trace_file << fit->to_csv() << endl;
     }
     trace_file.close();
     StateCostTable::iterator jt = it;
@@ -139,41 +129,41 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
       StateCostRecord *second_record = &jt->second;
       if (it->second.execution_time > jt->second.execution_time) {
         // ensure second_record always has larger execution time
-        analysis_log << "state " << it->first << "'s execution time " << 
+        analysis_log_ << "state " << it->first << "'s execution time " << 
           it->second.execution_time << " > state " << jt->first << 
-          "'s execution_time " << jt->second.execution_time << std::endl;
+          "'s execution_time " << jt->second.execution_time << endl;
         first_record = &jt->second;
         second_record = &it->second;
       }
       double latency_diff_percent = 1.0 * (second_record->execution_time - 
           first_record->execution_time) / first_record->execution_time;
-      analysis_log << "execution time for state " << first_record->id << 
-        " and state " << second_record->id << " differ by " << latency_diff_percent << std::endl;
+      analysis_log_ << "execution time for state " << first_record->id << 
+        " and state " << second_record->id << " differ by " << latency_diff_percent << endl;
       if (latency_diff_percent < latency_diff_percent_threshold) {
         // latencies are similar, skip diff
         continue;
       }
-      analysis_log << "comparing cost record for state " << first_record->id << 
-        " and state " << second_record->id << std::endl;
+      analysis_log_ << "comparing cost record for state " << first_record->id << 
+        " and state " << second_record->id << endl;
       FunctionTrace diff_trace;
       // The result from dtl library is buggy: the computed diff trace can have hunk that
       // is not only unordered but also incorrect w.r.t the original files.
       // So we we use the gnu_diff_trace instead of dtl_diff_trace
       gnu_diff_trace(first_record->id, second_record->id, first_record->trace, 
           second_record->trace, diff_trace);
-      analysis_log << "obtained a diff trace of size " << diff_trace.size() << std::endl;
+      analysis_log_ << "obtained a diff trace of size " << diff_trace.size() << endl;
       if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
-        analysis_log << "computed the diff latency for " << 
-          second_record->trace.size() << " trace items " << std::endl;
+        analysis_log_ << "computed the diff latency for " << 
+          second_record->trace.size() << " trace items " << endl;
         compute_critical_path(second_record);
-        std::cout << "Successfully computed the differential critical path for state pair <" 
-          << first_record->id << "," << second_record->id << ">" << std::endl;
+        cout << "Successfully computed the differential critical path for state pair <" 
+          << first_record->id << "," << second_record->id << ">" << endl;
       }
     }
   }
   for (auto record_iterator = cost_table->begin();
        record_iterator != cost_table->end(); ++record_iterator) {
-    result_file << "[State " << record_iterator->first
+    result_file_ << "[State " << record_iterator->first
            << "] => the number of instruction is "
            << record_iterator->second.instruction_count
            << ",the number of syscall is "
@@ -181,14 +171,14 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
            << ", the total execution time "
            << record_iterator->second.execution_time << "ms\n";
   }
-  analysis_log.close();
-  result_file.close();
-  std::cout << "Analysis log is written to violet_trace_analysis.log." << std::endl
-    << "The result is written to " << config.output_path << std::endl
-    << "Intermediate data is written to directory '" << config.outdir << "'" << std::endl;
+  analysis_log_.close();
+  result_file_.close();
+  cout << "Analysis log is written to violet_trace_analysis.log." << endl
+    << "The result is written to " << out_path_ << endl
+    << "Intermediate data is written to directory '" << out_dir_ << "'" << endl;
 }
 
-bool compute_diff_latency(FunctionTrace &first_trace, 
+bool VioletTraceAnalyzer::compute_diff_latency(FunctionTrace &first_trace, 
     FunctionTrace &second_trace, FunctionTrace &diff_trace)
 {
   size_t first_idx = 0, second_idx = 0, diff_idx = 0;
@@ -252,7 +242,7 @@ bool compute_diff_latency(FunctionTrace &first_trace,
   return true;
 }
 
-inline DiffChangeFlag get_change_flag(const std::string &line) {
+inline DiffChangeFlag VioletTraceAnalyzer::get_change_flag(const string &line) {
   if (line.size() == 0) {
     return DIFF_NA;
   }
@@ -267,21 +257,18 @@ inline DiffChangeFlag get_change_flag(const std::string &line) {
   return DIFF_NA;
 }
 
-bool dtl_diff_trace(int first_trace_id, int second_trace_id,
+bool VioletTraceAnalyzer::dtl_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &first_trace, FunctionTrace &second_trace,
     FunctionTrace &diff_trace) {
-  std::stringstream diff_log_name;
-  diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
-    << second_trace_id << ".diff";
-  std::ofstream diff_log(diff_log_name.str());
-  std::time_t now = std::time(nullptr);
+  ofstream diff_log(get_state_diff_file_name(first_trace_id, second_trace_id));
+  time_t now = time(nullptr);
   {
-    std::stringstream ss1, ss2;
+    stringstream ss1, ss2;
     ss1 << "violet_trace_state_" << first_trace_id;
     ss2 << "violet_trace_state_" << second_trace_id;
-    diff_log << "--- "<< ss1.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
-    now = std::time(nullptr);
-    diff_log << "+++ "<< ss2.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+    diff_log << "--- "<< ss1.str() << "\t" << put_time(localtime(&now), "%Y-%m-%d %H:%M:%S %z") << endl;
+    now = time(nullptr);
+    diff_log << "+++ "<< ss2.str() << "\t" << put_time(localtime(&now), "%Y-%m-%d %H:%M:%S %z") << endl;
   }
   dtl::Diff<FunctionTraceItem, FunctionTrace > diff(first_trace, second_trace);
   diff.onHuge();
@@ -295,7 +282,7 @@ bool dtl_diff_trace(int first_trace_id, int second_trace_id,
     // FIXME: the dtl library is buggy, it will output incorrect hunk information
     // we should probably use the `diff' command line directly.
     if ((old_a > 0 && hit->a < old_a) || (old_c > 0 && hit->c < old_c)) {
-      std::cerr << "unsorted hunk detected at " << "@@ -" << hit->a << "," << hit->b << " +" << hit->c << "," << hit->d << " @@" << std::endl;
+      cerr << "unsorted hunk detected at " << "@@ -" << hit->a << "," << hit->b << " +" << hit->c << "," << hit->d << " @@" << endl;
       old_a = hit->a;
       old_c = hit->c;
       continue;
@@ -325,56 +312,53 @@ bool dtl_diff_trace(int first_trace_id, int second_trace_id,
   return true;
 }
 
-static std::regex hunkReg("^@@\\s*-(\\d+),(\\d+)\\s*\\+(\\d+),(\\d+)\\s*@@$");
+static regex hunkReg("^@@\\s*-(\\d+),(\\d+)\\s*\\+(\\d+),(\\d+)\\s*@@$");
 struct hunk_header {
   long long a, b, c, d;
 };
 
-bool gnu_diff_trace(int first_trace_id, int second_trace_id,
+bool VioletTraceAnalyzer::gnu_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &first_trace, FunctionTrace &second_trace,
     FunctionTrace &diff_trace) {
-  std::stringstream ss1, ss2;
-  ss1 << config.outdir << "/violet_trace_state_" << first_trace_id << "_keys.txt";
-  ss2 << config.outdir << "/violet_trace_state_" << second_trace_id << "_keys.txt";
-  std::ofstream trace_key1(ss1.str()), trace_key2(ss2.str());
+  string trace_key1_fname = get_trace_key_file_name(first_trace_id);
+  string trace_key2_fname = get_trace_key_file_name(second_trace_id);
+  ofstream trace_key1(trace_key1_fname), trace_key2(trace_key2_fname);
   for (FunctionTrace::iterator fit = first_trace.begin(); fit != first_trace.end(); ++fit) {
     // Here we must output the hash key of the trace item, which does not include
     // the execution time. Otherwise, almost each line will be different.
-    trace_key1 << fit->hash_key() << std::endl;
+    trace_key1 << fit->hash_key() << endl;
   }
   trace_key1.close();
   for (FunctionTrace::iterator fit = second_trace.begin(); fit != second_trace.end(); ++fit) {
     // Similarly, we need to output the hash key
-    trace_key2 << fit->hash_key() << std::endl;
+    trace_key2 << fit->hash_key() << endl;
   }
   trace_key2.close();
-  std::stringstream diff_log_name;
-  diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
-    << second_trace_id << ".diff";
-  std::string diff_command = "diff -u " + ss1.str() + " " + ss2.str() + " > " + diff_log_name.str();
+  string diff_log_name = get_state_diff_file_name(first_trace_id, second_trace_id);
+  string diff_command = "diff -u " + trace_key1_fname + " " + trace_key2_fname + " > " + diff_log_name;
   if (!system(diff_command.c_str())) {
     return false;
   }
-  std::ifstream diff_log(diff_log_name.str());
+  ifstream diff_log(diff_log_name);
   if (!diff_log.is_open()) {
     return false;
   }
-  std::string line;
+  string line;
   struct hunk_header hunk;
   bool found_hunk = false;
   long long old_a = -1, old_c = -1, old_idx = -1, new_idx = -1;
   while (getline(diff_log, line)) {
-    std::smatch sm;
-    std::regex_match(line, sm, hunkReg);
+    smatch sm;
+    regex_match(line, sm, hunkReg);
     if (sm.size() > 0) {
-      hunk.a = std::strtoll(sm[1].str().c_str(), nullptr, 10);
-      hunk.b = std::strtoll(sm[2].str().c_str(), nullptr, 10);
-      hunk.c = std::strtoll(sm[3].str().c_str(), nullptr, 10);
-      hunk.d = std::strtoll(sm[4].str().c_str(), nullptr, 10);
+      hunk.a = strtoll(sm[1].str().c_str(), nullptr, 10);
+      hunk.b = strtoll(sm[2].str().c_str(), nullptr, 10);
+      hunk.c = strtoll(sm[3].str().c_str(), nullptr, 10);
+      hunk.d = strtoll(sm[4].str().c_str(), nullptr, 10);
       found_hunk = true;
       if ((old_a > 0 && hunk.a < old_a) || (old_c > 0 && hunk.c < old_c)) {
-        std::cerr << "unsorted hunk detected at " << "@@ -" << hunk.a << "," 
-          << hunk.b << " +" << hunk.c << "," << hunk.d << " @@" << std::endl;
+        cerr << "unsorted hunk detected at " << "@@ -" << hunk.a << "," 
+          << hunk.b << " +" << hunk.c << "," << hunk.d << " @@" << endl;
       }
       old_a = hunk.a;
       old_c = hunk.c;
@@ -401,34 +385,31 @@ bool gnu_diff_trace(int first_trace_id, int second_trace_id,
   }
   diff_log.close();
 
-  std::stringstream pure_diff_log_name;
-  pure_diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
-    << second_trace_id << ".log";
-  std::ofstream pure_diff_log(pure_diff_log_name.str());
-  std::time_t now = std::time(nullptr);
+  ofstream pure_diff_log(get_state_diff_log_name(first_trace_id, second_trace_id));
+  time_t now = time(nullptr);
   {
-    std::stringstream ss1, ss2;
+    stringstream ss1, ss2;
     ss1 << "violet_trace_state_" << first_trace_id;
     ss2 << "violet_trace_state_" << second_trace_id;
-    pure_diff_log << "--- "<< ss1.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
-    now = std::time(nullptr);
-    pure_diff_log << "+++ "<< ss2.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+    pure_diff_log << "--- "<< ss1.str() << "\t" << put_time(localtime(&now), "%Y-%m-%d %H:%M:%S %z") << endl;
+    now = time(nullptr);
+    pure_diff_log << "+++ "<< ss2.str() << "\t" << put_time(localtime(&now), "%Y-%m-%d %H:%M:%S %z") << endl;
   }
   for (FunctionTrace::iterator hit = diff_trace.begin(); hit != diff_trace.end(); ++hit) {
     if (hit->diff.flag == DIFF_ADD) {
-      pure_diff_log << "+ " << *hit << "; @" << hit->diff.position << std::endl;
+      pure_diff_log << "+ " << *hit << "; @" << hit->diff.position << endl;
     } else if (hit->diff.flag == DIFF_DEL) {
-      pure_diff_log << "- " << *hit << "; @" << hit->diff.position << std::endl;
+      pure_diff_log << "- " << *hit << "; @" << hit->diff.position << endl;
     }
   }
   pure_diff_log.close();
   return true;
 }
 
-void compute_critical_path(StateCostRecord *record)
+void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record)
 {
   uint64_t parent_id = 0;
-  result_file << "[State " << record->id << "] critical path:" << std::endl;
+  result_file_ << "[State " << record->id << "] critical path:" << endl;
   for (int i = 0; i < 15; i++) {
     double max_diff = 0;
     int max_idx = -1;
@@ -442,7 +423,7 @@ void compute_critical_path(StateCostRecord *record)
           // only contain the entry function.
           continue;
         }
-        const std::string function_str = hexval(fit->function).str();
+        const string function_str = hexval(fit->function).str();
         if (fit->diff.latency > max_diff) {
           max_diff = fit->diff.latency;
           max_idx = idx;
@@ -452,7 +433,41 @@ void compute_critical_path(StateCostRecord *record)
     if (max_idx < 0)
       break;
     const FunctionTraceItem &result = record->trace[max_idx];
-    result_file << "\t=> " << result << std::endl;
+    result_file_ << "\t=> " << result << endl;
     parent_id = result.activity_id;
   }
+}
+
+  
+int analyzer_main(int argc, char **argv) {
+  string line;
+  StateCostTable cost_table;
+
+  if (parse_options(argc, argv) < 0) {
+    exit(1);
+  }
+
+  TraceParserBase *parser;
+  string log_ext = config.input_path.substr(config.input_path.size() - 4, 4);
+  if (log_ext.compare(".txt") == 0) {
+    parser = new TraceLogParser(config.input_path);
+  } else {
+    // if the input file ends with anything other than .txt, we will use
+    // the binary trace parser.
+    parser = new TraceDatParser(config.input_path);
+  }
+
+  if (!parser->parse(&cost_table)) {
+    cerr << "Abort: failed to parse the trace file " << config.input_path << endl;
+    exit(1);
+  }
+
+  VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir,
+      config.output_path, config.append_output);
+  if (!analyzer.init()) {
+    cerr << "Abort: failed to initialize violet trace analyzer" << endl;
+    exit(1);
+  }
+  analyzer.analyze_cost_table(&cost_table);
+  return 0;
 }
