@@ -1,0 +1,18 @@
+[State 0] critical path:
+	=> function 0x602435,caller 0x5f51be,activity_id 244,parent_id 0,execution time 320.297ms,diff time 279.075ms
+	=> function 0x5f7e31,caller 0x602435,activity_id 1412,parent_id 244,execution time 313.127ms,diff time 278.881ms
+	=> function 0x5dec2a,caller 0x5f7e31,activity_id 1616,parent_id 1412,execution time 290.047ms,diff time 262.022ms
+	=> function 0x5e0e74,caller 0x5dec2a,activity_id 3574,parent_id 1616,execution time 278.058ms,diff time 260.908ms
+	=> function 0x77abba,caller 0x5e0e74,activity_id 3584,parent_id 3574,execution time 277.959ms,diff time 261.033ms
+	=> function 0x99b9ae,caller 0x77abba,activity_id 3607,parent_id 3584,execution time 277.788ms,diff time 261.143ms
+	=> function 0x9c63d5,caller 0x99b9ae,activity_id 3752,parent_id 3607,execution time 276.831ms,diff time 261.009ms
+	=> function 0xb436e1,caller 0x9c63d5,activity_id 3820,parent_id 3752,execution time 276.358ms,diff time 260.649ms
+	=> function 0xb434d3,caller 0xb436e1,activity_id 3884,parent_id 3820,execution time 276.049ms,diff time 260.392ms
+	=> function 0xb4325e,caller 0xb434d3,activity_id 3889,parent_id 3884,execution time 276.014ms,diff time 260.389ms
+	=> function 0xb42ef1,caller 0xb4325e,activity_id 3969,parent_id 3889,execution time 275.661ms,diff time 260.516ms
+	=> function 0xb424f1,caller 0xb42ef1,activity_id 3974,parent_id 3969,execution time 275.619ms,diff time 260.514ms
+	=> function 0xa42946,caller 0xb424f1,activity_id 4854,parent_id 3974,execution time 269.882ms,diff time 260.361ms
+	=> function 0xa42768,caller 0xa42946,activity_id 4976,parent_id 4854,execution time 263.674ms,diff time 260.422ms
+	=> function 0xa0cec6,caller 0xa42768,activity_id 5085,parent_id 4976,execution time 262.924ms,diff time 260.423ms
+[State 0] => the number of instruction is 0,the number of syscall is 0, the total execution time 2098.92ms
+[State 1] => the number of instruction is 0,the number of syscall is 0, the total execution time 1582.26ms
