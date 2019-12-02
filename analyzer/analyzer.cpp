@@ -20,6 +20,9 @@
 #include <regex>
 #include <ctime>
 #include <sys/stat.h>
+#include <string>
+#include <cstring>
+#include <cstdlib>
 
 using dtl::Diff;
 using dtl::elemInfo;
@@ -122,15 +125,6 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
 
   // diff of any pair-wise records in the cost table
   for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
-    {
-      std::stringstream trace_name;
-      trace_name << config.outdir << "/" << "violet_trace_state_" << it->second.id << ".txt";
-      std::ofstream trace_file(trace_name.str());
-      for (FunctionTrace::iterator fit = it->second.trace.begin(); fit != it->second.trace.end(); ++fit) {
-        trace_file << *fit << std::endl;
-      }
-      trace_file.close();
-    }
     StateCostTable::iterator jt = it;
     for (++jt; jt != cost_table->end(); ++jt) {
       StateCostRecord *first_record = &it->second;
@@ -153,16 +147,15 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
       }
       analysis_log << "comparing cost record for state " << first_record->id << 
         " and state " << second_record->id << std::endl;
-      std::stringstream diff_log_name;
-      diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_record->id<< "_" 
-        << second_record->id << ".diff";
-      std::ofstream diff_log(diff_log_name.str());
       FunctionTrace diff_trace;
-      unified_diff_trace(first_record->id, second_record->id, first_record->trace, 
-          second_record->trace, diff_trace, diff_log);
-      diff_log.close();
+      // The result from dtl library is buggy: the computed diff trace can have hunk that
+      // is not only unordered but also incorrect w.r.t the original files.
+      // So we we use the gnu_diff_trace instead of dtl_diff_trace
+      gnu_diff_trace(first_record->id, second_record->id, first_record->trace, 
+          second_record->trace, diff_trace);
       analysis_log << "obtained a diff trace of size " << diff_trace.size() << std::endl;
       compute_diff_latency(first_record->trace, second_record->trace, diff_trace);
+      // TODO: compute the critical path
     }
   }
   for (auto record_iterator = cost_table->begin();
@@ -224,20 +217,20 @@ bool compute_diff_latency(FunctionTrace &first_trace,
       second_idx++;
       first_idx++;
     }
-    assert(*common_idx == diff_pos);
-    if (diff_item->diff.flag == DIFF_COM) {
-      first_item = &first_trace.at(first_idx);
-      second_item = &second_trace.at(second_idx);
-      assert(first_item->function == second_item->function);
-      second_item->diff.latency = second_item->execution_time - first_item->execution_time;
-    } else if (diff_item->diff.flag == DIFF_ADD) {
-      second_item = &second_trace.at(second_idx);
-      second_item->diff.latency = second_item->execution_time;
-    }
-    *common_idx = *common_idx + 1;
+    assert(*common_idx == *common_size);
     if (diff_pos >= 0 && diff_item != NULL) {
+      if (diff_item->diff.flag == DIFF_COM) {
+        first_item = &first_trace.at(first_idx);
+        second_item = &second_trace.at(second_idx);
+        assert(first_item->function == second_item->function);
+        second_item->diff.latency = second_item->execution_time - first_item->execution_time;
+      } else if (diff_item->diff.flag == DIFF_ADD) {
+        second_item = &second_trace.at(second_idx);
+        second_item->diff.latency = second_item->execution_time;
+      }
       diff_idx++;
     }
+    *common_idx = *common_idx + 1;
   }
   return true;
 }
@@ -257,9 +250,13 @@ inline DiffChangeFlag get_change_flag(const std::string &line) {
   return DIFF_NA;
 }
 
-bool unified_diff_trace(int first_trace_id, int second_trace_id,
+bool dtl_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &first_trace, FunctionTrace &second_trace,
-    FunctionTrace &diff_trace, std::ofstream &diff_log) {
+    FunctionTrace &diff_trace) {
+  std::stringstream diff_log_name;
+  diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
+    << second_trace_id << ".diff";
+  std::ofstream diff_log(diff_log_name.str());
   std::time_t now = std::time(nullptr);
   {
     std::stringstream ss1, ss2;
@@ -291,12 +288,13 @@ bool unified_diff_trace(int first_trace_id, int second_trace_id,
     old_idx = hit->a + hit->common[0].size() - 1;
     new_idx = hit->c + hit->common[0].size() - 1;
     for (auto cit = hit->change.begin(); cit != hit->change.end(); ++cit) {
-      FunctionTraceItem item = cit->first;
       if (cit->second.type == dtl::SES_ADD) {
+        FunctionTraceItem item = cit->first;
         item.diff.flag = DIFF_ADD;
         item.diff.position = new_idx++;
         diff_trace.push_back(item);
       } else if (cit->second.type == dtl::SES_DELETE) {
+        FunctionTraceItem item = cit->first;
         item.diff.flag = DIFF_DEL;
         item.diff.position = old_idx++;
         diff_trace.push_back(item);
@@ -306,5 +304,106 @@ bool unified_diff_trace(int first_trace_id, int second_trace_id,
       }
     }
   }
+  diff_log.close();
+  return true;
+}
+
+static std::regex hunkReg("^@@\\s*-(\\d+),(\\d+)\\s*\\+(\\d+),(\\d+)\\s*@@$");
+struct hunk_header {
+  long long a, b, c, d;
+};
+
+bool gnu_diff_trace(int first_trace_id, int second_trace_id,
+    FunctionTrace &first_trace, FunctionTrace &second_trace,
+    FunctionTrace &diff_trace) {
+  std::stringstream ss1, ss2;
+  ss1 << config.outdir << "/violet_trace_state_" << first_trace_id << "_keys.txt";
+  ss2 << config.outdir << "/violet_trace_state_" << second_trace_id << "_keys.txt";
+  std::ofstream trace_file1(ss1.str()), trace_file2(ss2.str());
+  for (FunctionTrace::iterator fit = first_trace.begin(); fit != first_trace.end(); ++fit) {
+    // Here we must output the hash key of the trace item, which does not include
+    // the execution time. Otherwise, almost each line will be different.
+    trace_file1 << fit->hash_key() << std::endl;
+  }
+  trace_file1.close();
+  for (FunctionTrace::iterator fit = second_trace.begin(); fit != second_trace.end(); ++fit) {
+    // Similarly, we need to output the hash key
+    trace_file2 << fit->hash_key() << std::endl;
+  }
+  trace_file2.close();
+  std::stringstream diff_log_name;
+  diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
+    << second_trace_id << ".diff";
+  std::string diff_command = "diff -u " + ss1.str() + " " + ss2.str() + " > " + diff_log_name.str();
+  if (!system(diff_command.c_str())) {
+    return false;
+  }
+  std::ifstream diff_log(diff_log_name.str());
+  if (!diff_log.is_open()) {
+    return false;
+  }
+  std::string line;
+  struct hunk_header hunk;
+  bool found_hunk = false;
+  long long old_a = -1, old_c = -1, old_idx = -1, new_idx = -1;
+  while (getline(diff_log, line)) {
+    std::smatch sm;
+    std::regex_match(line, sm, hunkReg);
+    if (sm.size() > 0) {
+      hunk.a = std::strtoll(sm[1].str().c_str(), nullptr, 10);
+      hunk.b = std::strtoll(sm[2].str().c_str(), nullptr, 10);
+      hunk.c = std::strtoll(sm[3].str().c_str(), nullptr, 10);
+      hunk.d = std::strtoll(sm[4].str().c_str(), nullptr, 10);
+      found_hunk = true;
+      if ((old_a > 0 && hunk.a < old_a) || (old_c > 0 && hunk.c < old_c)) {
+        std::cerr << "unsorted hunk detected at " << "@@ -" << hunk.a << "," 
+          << hunk.b << " +" << hunk.c << "," << hunk.d << " @@" << std::endl;
+      }
+      old_a = hunk.a;
+      old_c = hunk.c;
+      old_idx = hunk.a - 1;
+      new_idx = hunk.c - 1;
+    } else if (found_hunk) {
+      DiffChangeFlag flag = get_change_flag(line);
+      assert(flag != DIFF_NA);
+      if (flag == DIFF_ADD) {
+        FunctionTraceItem item(second_trace.at(new_idx));
+        item.diff.flag = flag;
+        item.diff.position = new_idx++;
+        diff_trace.push_back(item);
+      } else if (flag == DIFF_DEL) {
+        FunctionTraceItem item(first_trace.at(old_idx));
+        item.diff.flag = flag;
+        item.diff.position = old_idx++;
+        diff_trace.push_back(item);
+      } else if (flag == DIFF_COM) {
+        old_idx++;
+        new_idx++;
+      }
+    }
+  }
+  diff_log.close();
+
+  std::stringstream pure_diff_log_name;
+  pure_diff_log_name << config.outdir << "/" << "violet_trace_diff_state_" << first_trace_id << "_" 
+    << second_trace_id << ".log";
+  std::ofstream pure_diff_log(pure_diff_log_name.str());
+  std::time_t now = std::time(nullptr);
+  {
+    std::stringstream ss1, ss2;
+    ss1 << "violet_trace_state_" << first_trace_id;
+    ss2 << "violet_trace_state_" << second_trace_id;
+    pure_diff_log << "--- "<< ss1.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+    now = std::time(nullptr);
+    pure_diff_log << "+++ "<< ss2.str() << "\t" << std::put_time(std::localtime(&now), "%Y-%m-%d %H:%M:%S %z") << std::endl;
+  }
+  for (FunctionTrace::iterator hit = diff_trace.begin(); hit != diff_trace.end(); ++hit) {
+    if (hit->diff.flag == DIFF_ADD) {
+      pure_diff_log << "+ " << *hit << "; @" << hit->diff.position << std::endl;
+    } else if (hit->diff.flag == DIFF_DEL) {
+      pure_diff_log << "- " << *hit << "; @" << hit->diff.position << std::endl;
+    }
+  }
+  pure_diff_log.close();
   return true;
 }

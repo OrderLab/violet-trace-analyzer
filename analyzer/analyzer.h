@@ -22,15 +22,18 @@ int parse_options(int argc, char **argv);
 
 void create_critical_path(int state, StateCostRecord record, std::ofstream *parsed_log);
 
-DiffChangeFlag get_change_flag(const std::string &line);
-bool unified_diff_trace(int first_trace_id, int second_trace_id,
+bool dtl_diff_trace(int first_trace_id, int second_trace_id,
     FunctionTrace &first_trace, FunctionTrace &second_trace,
-    FunctionTrace &diff_trace, std::ofstream &diff_log);
+    FunctionTrace &diff_trace);
+bool gnu_diff_trace(int first_trace_id, int second_trace_id,
+    FunctionTrace &first_trace, FunctionTrace &second_trace,
+    FunctionTrace &diff_trace);
 bool compute_diff_latency(FunctionTrace &first_trace, 
     FunctionTrace &second_trace, FunctionTrace &diff_trace);
 
 void analyze_cost_table(StateCostTable *cost_table, std::string output_path);
-
 int analyzer_main(int argc, char **argv);
+
+DiffChangeFlag get_change_flag(const std::string &line);
 
 #endif  // LOG_ANALYZER_ANALYZER_H

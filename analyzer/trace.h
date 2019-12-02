@@ -74,6 +74,10 @@ class FunctionTraceItem {
     friend std::ostream &operator<<(std::ostream &o, const FunctionTraceItem &t) {
       return o << "; Function " << hexval(t.function) << "; runs " << t.execution_time;
     }
+
+    inline std::string hash_key() const {
+      return hexval(function).str();
+    }
 };
 
 typedef std::vector<FunctionTraceItem> FunctionTrace;
