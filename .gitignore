@@ -40,3 +40,5 @@ build/
 *.log
 *.swp
 *.diff
+output/
+result.txt

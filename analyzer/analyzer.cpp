@@ -154,7 +154,10 @@ void analyze_cost_table(StateCostTable *cost_table, std::string output_path) {
       gnu_diff_trace(first_record->id, second_record->id, first_record->trace, 
           second_record->trace, diff_trace);
       analysis_log << "obtained a diff trace of size " << diff_trace.size() << std::endl;
-      compute_diff_latency(first_record->trace, second_record->trace, diff_trace);
+      if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
+        analysis_log << "Successfully computed the diff latency for " << 
+          second_record->trace.size() << " trace items " << std::endl;
+      }
       // TODO: compute the critical path
     }
   }

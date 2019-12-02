@@ -24,6 +24,11 @@ If you are using Clion, the IDE supports `.clang-format` style. Go to `Settings/
 
 ## Usage
 
+```
+$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -o result.txt 
+```
+
+
 For Python implementation:
 
 ```
