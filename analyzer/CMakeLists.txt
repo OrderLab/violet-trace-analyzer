@@ -8,5 +8,7 @@
 
 add_executable(log_analyzer
     parser.cpp
+    symtable.cpp
     analyzer.cpp
+    utils.cpp
     main.cpp)

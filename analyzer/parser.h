@@ -9,8 +9,8 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
-#ifndef VIOLET_ANALYZER_PARSER_H
-#define VIOLET_ANALYZER_PARSER_H
+#ifndef VIOLET_LOG_ANALYZER_PARSER_H
+#define VIOLET_LOG_ANALYZER_PARSER_H
 
 #include <iostream>
 #include <sstream>
@@ -87,4 +87,4 @@ class TraceDatParser: public TraceParserBase {
     bool parse(StateCostTable *table);
 };
 
-#endif /* VIOLET_ANALYZER_PARSER_H */
+#endif /* VIOLET_LOG_ANALYZER_PARSER_H */

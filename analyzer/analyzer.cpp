@@ -11,11 +11,12 @@
 //
 
 #include "analyzer.h"
-#include "cxxopts/cxxopts.hpp"
-#include "dtl/dtl.hpp"
 #include "config.h"
 #include "parser.h"
+#include "symtable.h"
 
+#include "cxxopts/cxxopts.hpp"
+#include "dtl/dtl.hpp"
 #include <assert.h>
 #include <errno.h>
 #include <regex>
@@ -38,6 +39,8 @@ cxxopts::Options add_options() {
 
   options.add_options()
       ("i,input", "input file name", cxxopts::value<string>())
+      ("e,executable", "path to the executable file", cxxopts::value<string>())
+      ("s,symtable", "path to symbol table file of executable (produced from objdump)", cxxopts::value<string>())
       ("o,output", "output file name", cxxopts::value<string>())
       ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
@@ -72,6 +75,12 @@ int parse_options(int argc, char **argv) {
     }
     config.input_path = result["input"].as<string>();
     config.output_path = result["output"].as<string>();
+    if (result.count("executable")) {
+      config.executable_path = result["executable"].as<string>();
+    }
+    if (result.count("symtable")) {
+      config.symtable_path = result["symtable"].as<string>();
+    }
     config.append_output = result["append"].as<bool>();
     if (!file_exists(config.input_path)) {
       cerr << "Input file " << config.input_path
@@ -86,8 +95,8 @@ int parse_options(int argc, char **argv) {
   }
 }
 
-VioletTraceAnalyzer::VioletTraceAnalyzer(string log_path, string outdir, string output_path, 
-    bool append_output): log_path_(log_path), out_dir_(outdir), out_path_(output_path)
+VioletTraceAnalyzer::VioletTraceAnalyzer(string log_path, string outdir, string output_path, string symtab_path, 
+    bool append_output): log_path_(log_path), out_dir_(outdir), out_path_(output_path), symtab_path_(symtab_path)
 {
   analysis_log_.open(log_path);
   if (append_output)
@@ -103,6 +112,9 @@ bool VioletTraceAnalyzer::init()
     if (errno == EEXIST) // ignore dir exists error
       return true;
     return false;
+  }
+  if (symtab_path_.size() > 0) {
+    return SymbolTable::parse(symtab_path_, &symbol_table_);
   }
   return true;
 }
@@ -434,9 +446,35 @@ void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int bas
     if (max_idx < 0)
       break;
     const FunctionTraceItem &result = record->trace[max_idx];
-    result_file_ << "\t=> " << result << endl;
+    result_file_ << "\t=> ";
+    printFunctionTraceItem(result_file_, result);
+    result_file_ << endl;
     parent_id = result.activity_id;
   }
+}
+
+ostream& VioletTraceAnalyzer::printFunctionTraceItem (ostream &o, 
+    const FunctionTraceItem &t, bool resolve)
+{
+  if (resolve && symbol_table_.size() > 0) {
+    // leverage the symbol table to resolve the function address
+    // in the result
+    string func_addr = hexval(t.function).str();
+    struct obj_symbol *p = symbol_table_.get_symbol_by_saddr(func_addr);
+    o << "function @" << func_addr;
+    if (p != NULL)
+      o << "<" << p->function << ">";
+    func_addr = hexval(t.caller).str();
+    p = symbol_table_.get_symbol_by_saddr(func_addr);
+    o << ",caller @" << func_addr;
+    if (p != NULL)
+      o << "<" << p->function << ">";
+    o << ",activity_id " << t.activity_id << ",parent_id " << t.parent_id 
+      << ",execution time " << t.execution_time << "ms,diff time " 
+      << t.diff.latency << "ms";
+    return o;
+  }
+  return o << t;
 }
 
   
@@ -464,7 +502,7 @@ int analyzer_main(int argc, char **argv) {
   }
 
   VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir,
-      config.output_path, config.append_output);
+      config.output_path, config.symtable_path, config.append_output);
   if (!analyzer.init()) {
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);

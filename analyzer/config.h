@@ -8,16 +8,18 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
-#ifndef LOG_ANALYZER_CONFIG_H
-#define LOG_ANALYZER_CONFIG_H
+#ifndef VIOLET_LOG_ANALYZER_CONFIG_H
+#define VIOLET_LOG_ANALYZER_CONFIG_H
 
 #include <string>
 
 struct analyzer_config {
   bool append_output;
   std::string input_path;
+  std::string executable_path;
+  std::string symtable_path;
   std::string output_path;
   std::string outdir;
 };
 
-#endif  // LOG_ANALYZER_CONFIG_H
+#endif  // VIOLET_LOG_ANALYZER_CONFIG_H
