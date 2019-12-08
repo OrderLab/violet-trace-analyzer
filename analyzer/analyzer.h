@@ -9,8 +9,8 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
-#ifndef LOG_ANALYZER_ANALYZER_H
-#define LOG_ANALYZER_ANALYZER_H
+#ifndef VIOLET_LOG_ANALYZER_ANALYZER_H
+#define VIOLET_LOG_ANALYZER_ANALYZER_H
 
 #include <map>
 #include <iostream>
@@ -19,11 +19,13 @@
 #include <vector>
 
 #include "trace.h"
+#include "symtable.h"
 
 class VioletTraceAnalyzer {
   public:
     VioletTraceAnalyzer(std::string log_path, std::string outdir, 
-        std::string output_path, bool append_output=false);
+        std::string output_path, std::string symtab_path, 
+        bool append_output=false);
 
     ~VioletTraceAnalyzer();
 
@@ -70,16 +72,21 @@ class VioletTraceAnalyzer {
       return ss.str();
     }
 
+    std::ostream& printFunctionTraceItem (std::ostream &o, 
+        const FunctionTraceItem &t, bool resolve=true);
+
  private:
     std::string log_path_;
     std::string out_dir_;
     std::string out_path_;
+    std::string symtab_path_;
     std::ofstream analysis_log_;
     std::ofstream result_file_;
+    SymbolTable symbol_table_;
 };
 
 int parse_options(int argc, char **argv);
 
 int analyzer_main(int argc, char **argv);
 
-#endif  // LOG_ANALYZER_ANALYZER_H
+#endif  // VIOLET_LOG_ANALYZER_ANALYZER_H
