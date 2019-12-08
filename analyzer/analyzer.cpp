@@ -95,9 +95,19 @@ int parse_options(int argc, char **argv) {
   }
 }
 
-VioletTraceAnalyzer::VioletTraceAnalyzer(string log_path, string outdir, string output_path, string symtab_path, 
-    bool append_output): log_path_(log_path), out_dir_(outdir), out_path_(output_path), symtab_path_(symtab_path)
+VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdir, 
+    const char* output_path, const char* symtab_path, const char* executable_path, 
+    bool append_output): log_path_(log_path), out_path_(output_path)
 {
+  if (outdir != NULL) {
+    out_dir_ = outdir; 
+  } else {
+    out_dir_ = ".";  // if outdir is not specified, default to current dir
+  }
+  if (symtab_path != NULL)
+    symtab_path_ = symtab_path;
+  if (executable_path != NULL)
+    executable_path_ = executable_path;
   analysis_log_.open(log_path);
   if (append_output)
     result_file_.open(output_path, fstream::app);
@@ -113,8 +123,23 @@ bool VioletTraceAnalyzer::init()
       return true;
     return false;
   }
+  if (executable_path_.size() > 0) {
+    string filename = executable_path_.substr(executable_path_.find_last_of('/') + 1);
+    symtab_path_ = out_dir_ + "/" + filename.substr(0, filename.find_last_of('.')) + ".sym";
+    string objdump_cmd = "objdump -C -t " + executable_path_ + " > " + symtab_path_;
+    analysis_log_ << "Generating symbol table for executable " << executable_path_ 
+      << "with '" << objdump_cmd << "'...";
+    if (system(objdump_cmd.c_str()) != 0) {
+      analysis_log_ << "Failed" << endl;
+      return false;
+    }
+    analysis_log_ << "Succeeded" << endl;
+  }
   if (symtab_path_.size() > 0) {
-    return SymbolTable::parse(symtab_path_, &symbol_table_);
+    analysis_log_ << "Parsing symbol table for executable from " << symtab_path_ << "...";
+    bool success = SymbolTable::parse(symtab_path_, &symbol_table_);
+    analysis_log_ << (success ? "Succeeded" : "Failed") << endl;
+    return success;
   }
   return true;
 }
@@ -348,7 +373,10 @@ bool VioletTraceAnalyzer::gnu_diff_trace(int first_trace_id, int second_trace_id
   trace_key2.close();
   string diff_log_name = get_state_diff_file_name(first_trace_id, second_trace_id);
   string diff_command = "diff -u " + trace_key1_fname + " " + trace_key2_fname + " > " + diff_log_name;
-  if (!system(diff_command.c_str())) {
+  /* when diff exist status returns 0, it means two files are equal
+     when diff exist status returns 1, it means two files are unequal
+     when diff exit status returns 2, it means trouble */
+  if (system(diff_command.c_str()) == 2) {
     return false;
   }
   ifstream diff_log(diff_log_name);
@@ -501,8 +529,9 @@ int analyzer_main(int argc, char **argv) {
     exit(1);
   }
 
-  VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir,
-      config.output_path, config.symtable_path, config.append_output);
+  VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir.c_str(),
+      config.output_path.c_str(), config.symtable_path.c_str(),
+      config.executable_path.c_str(), config.append_output);
   if (!analyzer.init()) {
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);

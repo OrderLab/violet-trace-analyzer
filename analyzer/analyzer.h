@@ -23,9 +23,9 @@
 
 class VioletTraceAnalyzer {
   public:
-    VioletTraceAnalyzer(std::string log_path, std::string outdir, 
-        std::string output_path, std::string symtab_path, 
-        bool append_output=false);
+    VioletTraceAnalyzer(const char* log_path, const char* outdir, 
+        const char* output_path, const char* symtab_path=NULL, 
+        const char* executable_path=NULL, bool append_output=false);
 
     ~VioletTraceAnalyzer();
 
@@ -47,14 +47,14 @@ class VioletTraceAnalyzer {
     inline std::string get_state_diff_file_name(int first_id, int second_id)
     {
       std::stringstream ss;
-      ss << out_dir_ << "/" << "violet_trace_diff_state_" << first_id << "_" << second_id << ".diff";
+      ss << out_dir_ << "/violet_trace_diff_state_" << first_id << "_" << second_id << ".diff";
       return ss.str();
     }
 
     inline std::string get_state_diff_log_name(int first_id, int second_id)
     {
       std::stringstream ss;
-      ss << out_dir_ << "/" << "violet_trace_diff_state_" << first_id << "_" << second_id << ".log";
+      ss << out_dir_ << "/violet_trace_diff_state_" << first_id << "_" << second_id << ".log";
       return ss.str();
     }
 
@@ -79,6 +79,7 @@ class VioletTraceAnalyzer {
     std::string log_path_;
     std::string out_dir_;
     std::string out_path_;
+    std::string executable_path_;
     std::string symtab_path_;
     std::ofstream analysis_log_;
     std::ofstream result_file_;
