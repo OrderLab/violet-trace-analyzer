@@ -9,12 +9,15 @@
 //    Licensed under the Apache License, Version 2.0 (the "License");
 //
 
-#ifndef __UTILS_H_
-#define __UTILS_H_
+#ifndef VIOLET_LOG_ANALYZER_UTILS_H
+#define VIOLET_LOG_ANALYZER_UTILS_H
 
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <cstring>
+#include <algorithm>
+#include <vector>
 
 template <typename T>
 T s2f(const std::string &s) {
@@ -52,4 +55,29 @@ inline std::ostream &operator<<(std::ostream &out, const hexval &h) {
   return out;
 }
 
-#endif /* __UTILS_H_ */
+inline std::string& ltrim(std::string& str, const char* chars) {
+  str.erase(0, str.find_first_not_of(chars));
+  return str;
+}
+
+inline std::string& ltrim(std::string& str) {
+  str.erase(str.begin(), std::find_if(str.begin(), str.end(), 
+        std::not1(std::ptr_fun<int, int>(std::isspace))));
+  return str;
+}
+
+inline std::string& rtrim(std::string& str) {
+  str.erase(std::find_if(str.rbegin(), str.rend(), 
+        std::not1(std::ptr_fun<int, int>(std::isspace))).base(), str.end());
+  return str;
+}
+
+inline std::string& trim(std::string& str) {
+  return ltrim(rtrim(str));
+}
+
+void split(const std::string& str, const char *delimeters, std::vector<std::string>& result);
+bool split_untiln(const std::string& str, const char *delimeters, int n, 
+    std::vector<std::string>& result, size_t *last_pos);
+
+#endif /* VIOLET_LOG_ANALYZER_UTILS_H */
