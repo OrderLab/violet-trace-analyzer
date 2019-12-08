@@ -25,7 +25,10 @@ If you are using Clion, the IDE supports `.clang-format` style. Go to `Settings/
 ## Usage
 
 ```
-$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -o result.txt 
+$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -o result.txt
+
+# Use the specified symbol table file (objdump -C -t /path/to/executable) to output function name in critical path
+$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -s test/mysqld.sym -o result.txt
 ```
 
 
