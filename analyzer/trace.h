@@ -96,6 +96,7 @@ class FunctionTraceItem {
 };
 
 typedef std::vector<FunctionTraceItem> FunctionTrace;
+typedef std::vector<struct _constraintRecord> ConstraintTrace;
 
 typedef struct StateCostRecord {
   int id;
@@ -103,6 +104,8 @@ typedef struct StateCostRecord {
   int syscall_count;
   double execution_time;
   FunctionTrace trace;
+  ConstraintTrace target_constraints;
+  ConstraintTrace constraints;
 } StateRecord;
 
 typedef std::map<int, StateCostRecord> StateCostTable;

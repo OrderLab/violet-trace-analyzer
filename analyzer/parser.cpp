@@ -41,6 +41,25 @@ void TraceParserBase::add_trace_item(StateCostTable *table, int state_id,
   }
 }
 
+void TraceParserBase::add_constraint_item(StateCostTable *table,ConstraintItem &item)
+{
+  if (!table->count(item.id)) {
+    StateCostRecord record;
+    if (item.is_target)
+      record.target_constraints.push_back(item);
+    else
+      record.constraints.push_back(item);
+    (*table)[item.id] = record;
+  } else {
+    assert(table->count(item.id) == 1);
+    StateCostRecord &record = (*table)[item.id];
+    if (item.is_target)
+      record.target_constraints.push_back(item);
+    else
+      record.constraints.push_back(item);
+  }
+}
+
 bool TraceLogParser::parse(StateCostTable *table)
 {
   std::string line;
@@ -142,6 +161,7 @@ bool TraceDatParser::parse(StateCostTable *table)
 {
   // Must open the dat file in binary mode
   std::ifstream dat_file(m_fileName, std::ios::in | std::ios::binary);
+  std::ifstream dat_file2(m_constraintFileName, std::ios::in | std::ios::binary);
 
   if (!dat_file.is_open()) {
     std::cerr << "Unable to open file at " << m_fileName << std::endl;
@@ -180,6 +200,16 @@ bool TraceDatParser::parse(StateCostTable *table)
     add_trace_item(table, item.state_id, trace_item);
   }
   dat_file.close();
+
+  while(dat_file2.good()) {
+    ConstraintItem constraint_item;
+
+    dat_file2.read((char *)&constraint_item,sizeof(constraint_item));
+    if (!dat_file2)
+      break;
+    add_constraint_item(table,constraint_item);
+  }
+
   std::cout << "Successfully parsed " << parsed_cnt << " trace records from " << m_fileName << std::endl;
   return true;
 }

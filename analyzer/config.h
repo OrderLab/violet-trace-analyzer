@@ -20,6 +20,7 @@ struct analyzer_config {
   std::string symtable_path;
   std::string output_path;
   std::string outdir;
+  std::string constraint_path;
 };
 
 #endif  // VIOLET_LOG_ANALYZER_CONFIG_H

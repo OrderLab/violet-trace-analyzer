@@ -16,48 +16,6 @@
 #include <sstream>
 #include "trace.h"
 
-// The base class for latency trace file parser
-class TraceParserBase {
-  protected:
-    std::string m_fileName;
-
-  public:
-    TraceParserBase(const std::string &fileName):
-      m_fileName(fileName)
-    {
-    }
-
-    virtual bool parse(StateCostTable *table) = 0;
-    virtual void add_trace_item(StateCostTable *table, int state_id, 
-        FunctionTraceItem &item);
-};
-
-// Parse the violet plugin output from the S2E log debug.txt
-// The output is in the S2E log when the plugin is configured
-// with `printTrace` flag. By default, the trace data is written
-// to a binary trace file, which should be parsed using 
-// the TraceDatParser
-class TraceLogParser: public TraceParserBase {
-  public:
-    TraceLogParser(const std::string &fileName):
-      TraceParserBase(fileName)
-    {
-    }
-
-    bool parse(StateCostTable *table);
-    
-    static std::string get_address(const std::string &line, std::string name);
-    static std::string get_execution_time(const std::string &line, std::string name);
-
-  private:
-    static size_t get_position(const std::string &filter, const std::string &line);
-    static int get_state_id(const std::string &line);
-    static std::string get_count(const std::string &line, std::string name);
-    static std::string get_count_base(const std::string &line, std::string name,
-                               char separator);
-    static bool is_case_result(const std::string &line);
-};
-
 // The trace data record that is serialized in the trace file
 // IMPORTANT!! the definition must be consistent with the
 // libs2eplugins/src/s2e/Plugins/ConfigurationAnalysis/LatencyTracker.h
@@ -76,11 +34,62 @@ struct _traceDatRecord {
 };
 #pragma pack(pop)
 
+typedef struct _constraintRecord {
+  int id;
+  int variable_number;
+  int64_t value;
+  bool is_target;
+} ConstraintItem;
+
+// The base class for latency trace file parser
+class TraceParserBase {
+  protected:
+    std::string m_fileName;
+    std::string m_constraintFileName;
+
+  public:
+    TraceParserBase(const std::string &fileName, const std::string &constraintFileName):
+      m_fileName(fileName),m_constraintFileName(constraintFileName)
+    {
+    }
+
+    virtual bool parse(StateCostTable *table) = 0;
+    virtual void add_trace_item(StateCostTable *table, int state_id, 
+        FunctionTraceItem &item);
+    virtual void add_constraint_item(StateCostTable *table, ConstraintItem &item);
+};
+
+// Parse the violet plugin output from the S2E log debug.txt
+// The output is in the S2E log when the plugin is configured
+// with `printTrace` flag. By default, the trace data is written
+// to a binary trace file, which should be parsed using 
+// the TraceDatParser
+class TraceLogParser: public TraceParserBase {
+  public:
+    TraceLogParser(const std::string &fileName,const std::string constraintFileName):
+      TraceParserBase(fileName,constraintFileName)
+    {
+    }
+
+    bool parse(StateCostTable *table);
+    
+    static std::string get_address(const std::string &line, std::string name);
+    static std::string get_execution_time(const std::string &line, std::string name);
+
+  private:
+    static size_t get_position(const std::string &filter, const std::string &line);
+    static int get_state_id(const std::string &line);
+    static std::string get_count(const std::string &line, std::string name);
+    static std::string get_count_base(const std::string &line, std::string name,
+                               char separator);
+    static bool is_case_result(const std::string &line);
+};
+
 // This is the binary latency trace file data parser
 class TraceDatParser: public TraceParserBase {
   public:
-    TraceDatParser(const std::string &fileName):
-      TraceParserBase(fileName)
+    TraceDatParser(const std::string &fileName, const std::string &constraintFileName):
+      TraceParserBase(fileName,constraintFileName)
     {
     }
 

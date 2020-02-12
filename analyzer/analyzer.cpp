@@ -39,6 +39,7 @@ cxxopts::Options add_options() {
 
   options.add_options()
       ("i,input", "input file name", cxxopts::value<string>())
+      ("c, constraint", "constraint file name", cxxopts::value<string>())
       ("e,executable", "path to the executable file", cxxopts::value<string>())
       ("s,symtable", "path to symbol table file of executable (produced from objdump)", cxxopts::value<string>())
       ("o,output", "output file name", cxxopts::value<string>())
@@ -74,6 +75,7 @@ int parse_options(int argc, char **argv) {
       config.outdir = "output";
     }
     config.input_path = result["input"].as<string>();
+    config.constraint_path = result["constraint"].as<string>();
     config.output_path = result["output"].as<string>();
     if (result.count("executable")) {
       config.executable_path = result["executable"].as<string>();
@@ -164,6 +166,34 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
     for (++jt; jt != cost_table->end(); ++jt) {
       StateCostRecord *first_record = &it->second;
       StateCostRecord *second_record = &jt->second;
+      bool is_comparable = true;
+      ConstraintTrace first_constraints = first_record->constraints;
+      ConstraintTrace second_constraints = second_record->constraints;
+      if(first_record->constraints.size() != second_record->constraints.size()) {
+        analysis_log_ << "state " << it->first << "'is not comparable with" <<
+          " state " << jt->first << endl;
+        continue;
+      }
+
+      while (!first_constraints.empty()) {
+        ConstraintItem first_constraint = first_constraints.back();
+        ConstraintItem second_constraint = second_constraints.back();
+        first_constraints.pop_back();
+        second_constraints.pop_back();
+        if (first_constraint.value != second_constraint.value) {
+          analysis_log_ << "state " << it->first << "'is not compareable with" <<
+                        " state " << jt->first << endl;
+          is_comparable = false;
+          break;
+        }
+
+        if(first_constraint.variable_number != second_constraint.variable_number)
+          std::cout << "error\n";
+      }
+
+      if(!is_comparable)
+        continue;
+
       if (it->second.execution_time > jt->second.execution_time) {
         // ensure second_record always has larger execution time
         analysis_log_ << "state " << it->first << "'s execution time " << 
@@ -451,7 +481,7 @@ void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int bas
   uint64_t parent_id = 0;
   result_file_ << "[State " << record->id << "] critical path (compared to state " 
    << base_trace_id << ") :" << endl;
-  for (int i = 0; i < 15; i++) {
+  for (int i = 0; i < 20; i++) {
     double max_diff = 0;
     int max_idx = -1;
     int idx = 0;
@@ -517,11 +547,11 @@ int analyzer_main(int argc, char **argv) {
   TraceParserBase *parser;
   string log_ext = config.input_path.substr(config.input_path.size() - 4, 4);
   if (log_ext.compare(".txt") == 0) {
-    parser = new TraceLogParser(config.input_path);
+    parser = new TraceLogParser(config.input_path,config.constraint_path);
   } else {
     // if the input file ends with anything other than .txt, we will use
     // the binary trace parser.
-    parser = new TraceDatParser(config.input_path);
+    parser = new TraceDatParser(config.input_path,config.constraint_path);
   }
 
   if (!parser->parse(&cost_table)) {
