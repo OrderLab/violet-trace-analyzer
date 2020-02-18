@@ -41,6 +41,7 @@ class VioletTraceAnalyzer {
         FunctionTrace &second_trace, FunctionTrace &diff_trace);
     void compute_critical_path(StateCostRecord *record, int base_trace_id);
     void analyze_cost_table(StateCostTable *cost_table);
+    void build_black_list();
 
     static DiffChangeFlag get_change_flag(const std::string &line);
 
@@ -84,6 +85,7 @@ class VioletTraceAnalyzer {
     std::ofstream analysis_log_;
     std::ofstream result_file_;
     SymbolTable symbol_table_;
+    std::string black_list;
 };
 
 int parse_options(int argc, char **argv);

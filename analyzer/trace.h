@@ -109,5 +109,6 @@ typedef struct StateCostRecord {
 } StateRecord;
 
 typedef std::map<int, StateCostRecord> StateCostTable;
+typedef std::string BlackList;
 
 #endif /* VIOLET_ANALYZER_TRACE_H */

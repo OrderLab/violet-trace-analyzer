@@ -151,6 +151,15 @@ VioletTraceAnalyzer::~VioletTraceAnalyzer()
   analysis_log_.close();
   result_file_.close();
 }
+
+void VioletTraceAnalyzer::build_black_list() {
+  std::string black_function = "Query_cache::store_query(THD*, TABLE_LIST*)";
+
+  struct obj_symbol *badFunction = symbol_table_.get_symbol_by_func(black_function);
+  if(badFunction)
+    black_list = badFunction->saddress;
+}
+
 void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
   double latency_diff_percent_threshold = 0.2;
 
@@ -481,7 +490,8 @@ void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int bas
   uint64_t parent_id = 0;
   result_file_ << "[State " << record->id << "] critical path (compared to state " 
    << base_trace_id << ") :" << endl;
-  for (int i = 0; i < 20; i++) {
+
+  for (int i = 0; i < 30; i++) {
     double max_diff = 0;
     int max_idx = -1;
     int idx = 0;
@@ -494,7 +504,10 @@ void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int bas
           // only contain the entry function.
           continue;
         }
-        const string function_str = hexval(fit->function).str();
+        const std::string function_str = hexval(fit->function).str();
+        if (function_str == black_list)
+          continue;
+
         if (fit->diff.latency > max_diff) {
           max_diff = fit->diff.latency;
           max_idx = idx;
@@ -566,6 +579,7 @@ int analyzer_main(int argc, char **argv) {
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);
   }
+  analyzer.build_black_list();
   analyzer.analyze_cost_table(&cost_table);
   return 0;
 }
