@@ -25,7 +25,7 @@ class VioletTraceAnalyzer {
   public:
     VioletTraceAnalyzer(const char* log_path, const char* outdir, 
         const char* output_path, const char* symtab_path=NULL, 
-        const char* executable_path=NULL, bool append_output=false);
+        const char* executable_path=NULL, bool append_output=false, int max_ignored=0);
 
     ~VioletTraceAnalyzer();
 
@@ -84,6 +84,7 @@ class VioletTraceAnalyzer {
     std::ofstream analysis_log_;
     std::ofstream result_file_;
     SymbolTable symbol_table_;
+    int max_ignored_;
 };
 
 int parse_options(int argc, char **argv);

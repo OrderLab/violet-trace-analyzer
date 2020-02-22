@@ -45,6 +45,7 @@ cxxopts::Options add_options() {
       ("o,output", "output file name", cxxopts::value<string>())
       ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
+      ("n,number","max number constraints ignored",cxxopts::value<int>())
       ("help", "Print help message");
 
   return options;
@@ -74,6 +75,12 @@ int parse_options(int argc, char **argv) {
     } else {
       config.outdir = "output";
     }
+    if (result.count("number")) {
+      config.max_ignored =
+          result["number"].as<int>() < 0 ? 0 : result["number"].as<int>();
+    } else {
+      config.max_ignored = 0;
+    }
     config.input_path = result["input"].as<string>();
     config.constraint_path = result["constraint"].as<string>();
     config.output_path = result["output"].as<string>();
@@ -99,7 +106,8 @@ int parse_options(int argc, char **argv) {
 
 VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdir, 
     const char* output_path, const char* symtab_path, const char* executable_path, 
-    bool append_output): log_path_(log_path), out_path_(output_path)
+    bool append_output, int max_ignored):
+    log_path_(log_path), out_path_(output_path), max_ignored_(max_ignored)
 {
   if (outdir != NULL) {
     out_dir_ = outdir; 
@@ -155,10 +163,7 @@ VioletTraceAnalyzer::~VioletTraceAnalyzer()
 
 void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
   double latency_diff_percent_threshold = 0.2;
-
-  unsigned int n = 1; // # of parameters skipped
-  //assert (n < size);
-
+  int n = max_ignored_; // # of parameters skipped
 
   // diff of any pair-wise records in the cost table
   for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
@@ -619,7 +624,7 @@ int analyzer_main(int argc, char **argv) {
 
   VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir.c_str(),
       config.output_path.c_str(), config.symtable_path.c_str(),
-      config.executable_path.c_str(), config.append_output);
+      config.executable_path.c_str(), config.append_output, config.max_ignored);
   if (!analyzer.init()) {
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);
