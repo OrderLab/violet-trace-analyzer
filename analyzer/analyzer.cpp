@@ -195,7 +195,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
         {
           is_comparable = true;
 
-          for (int i = 0 ; i < first_combination.size(); ++i) {
+          for (uint i = 0 ; i < first_combination.size(); ++i) {
             ConstraintItem first_constraint = first_combination[i];
             ConstraintItem second_constraint = second_combination[i];
             if (first_constraint.value != second_constraint.value) {
@@ -271,7 +271,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
           return;
         }
 
-        for (int i = oft; i <= first_constraints.size() - k; ++i) {
+        for (uint i = oft; i <= first_constraints.size() - k; ++i) {
           first_combination.push_back(first_constraints[i]);
           second_combination.push_back(second_constraints[i]);
           make_comparison (i+1, k-1);
@@ -282,7 +282,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
       };
 
       for (int i = 0; i <= n; ++i) {
-        int k = first_constraints.size() - i;
+        uint k = first_constraints.size() - i;
         if (k < 0 || k > first_constraints.size())
           continue;
         make_comparison(0, k);
