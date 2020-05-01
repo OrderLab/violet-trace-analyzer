@@ -97,6 +97,19 @@ class FunctionTraceItem {
 
 typedef std::vector<FunctionTraceItem> FunctionTrace;
 typedef std::vector<struct _constraintRecord> ConstraintTrace;
+typedef std::map<int, std::string> ConstraintNameTrace;
+typedef std::map<int, std::vector<unsigned char>> ConstraintValueTrace;
+
+typedef struct _ioTrace {
+  uint64_t read_cnt;
+  uint64_t read_bytes;
+  uint64_t write_cnt;
+  uint64_t write_bytes;
+  uint64_t pread_cnt;
+  uint64_t pread_bytes;
+  uint64_t pwrite_cnt;
+  uint64_t pwrite_bytes;
+} IOTrace;
 
 typedef struct StateCostRecord {
   int id;
@@ -106,6 +119,11 @@ typedef struct StateCostRecord {
   FunctionTrace trace;
   ConstraintTrace target_constraints;
   ConstraintTrace constraints;
+  ConstraintNameTrace target_constraints_name;
+  ConstraintNameTrace constraints_name;
+  ConstraintValueTrace target_constraints_value;
+  ConstraintValueTrace constraints_value;
+  IOTrace io_trace;
 } StateRecord;
 
 typedef std::map<int, StateCostRecord> StateCostTable;

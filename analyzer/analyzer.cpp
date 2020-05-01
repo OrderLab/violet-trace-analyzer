@@ -46,6 +46,7 @@ cxxopts::Options add_options() {
       ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
       ("n,number","max number constraints ignored",cxxopts::value<int>())
+      ("a,iosyscall","io file name",cxxopts::value<string>())
       ("help", "Print help message");
 
   return options;
@@ -83,6 +84,7 @@ int parse_options(int argc, char **argv) {
     }
     config.input_path = result["input"].as<string>();
     config.constraint_path = result["constraint"].as<string>();
+    config.io_path = result["iosyscall"].as<string>();
     config.output_path = result["output"].as<string>();
     if (result.count("executable")) {
       config.executable_path = result["executable"].as<string>();
@@ -123,6 +125,8 @@ VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdi
     result_file_.open(output_path, fstream::app);
   else
     result_file_.open(output_path);
+  impact_table_file_.open("/Users/cherrypie/Desktop/research/s2e-log-analyzer/impact_table.csv");
+  printImpactTableHead();
 }
 
 bool VioletTraceAnalyzer::init()
@@ -158,6 +162,7 @@ VioletTraceAnalyzer::~VioletTraceAnalyzer()
 {
   analysis_log_.close();
   result_file_.close();
+  impact_table_file_.close();
 }
 
 
@@ -300,6 +305,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
            << record_iterator->second.syscall_count
            << ", the total execution time "
            << record_iterator->second.execution_time << "ms\n";
+    printRecordImpactTableRow(&record_iterator->second);
   }
   analysis_log_.close();
   result_file_.close();
@@ -598,7 +604,57 @@ ostream& VioletTraceAnalyzer::printFunctionTraceItem (ostream &o,
   return o << t;
 }
 
-  
+void VioletTraceAnalyzer::printRecordImpactTableRow (StateCostRecord *record)
+{
+  impact_table_file_ << record->id << ",";
+
+  for (auto kt = record->target_constraints.begin();
+  kt != record->target_constraints.end(); ++kt) {
+    impact_table_file_ << record->target_constraints_name.find(kt->variable_number)->second << "==";
+    size_t v_length = record->target_constraints_value.find(kt->variable_number)->second.size();
+    string v_string (record->target_constraints_value.find(kt->variable_number)->second.begin(),
+                     record->target_constraints_value.find(kt->variable_number)->second.end());
+    if (v_length == 4 || v_length == 8)
+      impact_table_file_ << kt->value;
+    else
+      impact_table_file_ << v_string;
+    if (std::next(kt) != record->target_constraints.end())
+      impact_table_file_ << "&&";
+    else
+      impact_table_file_ << ",";
+  }
+  for (auto kt = record->constraints.begin();
+  kt != record->constraints.end(); ++kt) {
+    impact_table_file_ << record->constraints_name.find(kt->variable_number)->second << "==";
+    size_t v_length = record->constraints_value.find(kt->variable_number)->second.size();
+    string v_string (record->constraints_value.find(kt->variable_number)->second.begin(),
+                     record->constraints_value.find(kt->variable_number)->second.end());
+    if (v_length == 4 || v_length == 8)
+      impact_table_file_ << kt->value;
+    else
+      impact_table_file_ << v_string;
+    if (std::next(kt) != record->constraints.end())
+      impact_table_file_ << "&&";
+    else
+      impact_table_file_ << ",";
+  }
+
+
+
+  // TODO check if there is a IO tracer.dat
+  impact_table_file_ << "IO=>" << record->io_trace.read_bytes << " " << record->io_trace.read_cnt << " "
+    << record->io_trace.write_bytes << " " << record->io_trace.write_cnt << " " << record->io_trace.pread_bytes << " "
+    << record->io_trace.pread_cnt << " " << record->io_trace.pwrite_bytes << " " << record->io_trace.pwrite_cnt;
+
+  impact_table_file_ << ";ET=>" << record->execution_time << "ms";
+
+  impact_table_file_ << ";IC=>" << record->instruction_count;
+
+  impact_table_file_ << ";SC=>" << record->syscall_count;
+
+  impact_table_file_ << "\n";
+}
+
 int analyzer_main(int argc, char **argv) {
   string line;
   StateCostTable cost_table;
@@ -614,7 +670,7 @@ int analyzer_main(int argc, char **argv) {
   } else {
     // if the input file ends with anything other than .txt, we will use
     // the binary trace parser.
-    parser = new TraceDatParser(config.input_path,config.constraint_path);
+    parser = new TraceDatParser(config.input_path,config.constraint_path, config.io_path);
   }
 
   if (!parser->parse(&cost_table)) {

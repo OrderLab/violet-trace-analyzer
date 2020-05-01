@@ -72,8 +72,19 @@ class VioletTraceAnalyzer {
       return ss.str();
     }
 
-    std::ostream& printFunctionTraceItem (std::ostream &o, 
+    inline void printImpactTableHead (void)
+    {
+      impact_table_file_ << "State,Constraints,Costs\n";
+    }
+
+
+    std::ostream& printFunctionTraceItem (std::ostream &o,
         const FunctionTraceItem &t, bool resolve=true);
+
+
+    void printRecordImpactTableRow (StateCostRecord *record);
+
+
 
  private:
     std::string log_path_;
@@ -83,6 +94,7 @@ class VioletTraceAnalyzer {
     std::string symtab_path_;
     std::ofstream analysis_log_;
     std::ofstream result_file_;
+    std::ofstream impact_table_file_;
     SymbolTable symbol_table_;
     int max_ignored_;
 };
