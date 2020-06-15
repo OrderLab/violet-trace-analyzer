@@ -45,6 +45,7 @@ cxxopts::Options add_options() {
       ("o,output", "output file name", cxxopts::value<string>())
       ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
+      ("n,number","max number constraints ignored",cxxopts::value<int>())
       ("help", "Print help message");
 
   return options;
@@ -74,6 +75,12 @@ int parse_options(int argc, char **argv) {
     } else {
       config.outdir = "output";
     }
+    if (result.count("number")) {
+      config.max_ignored =
+          result["number"].as<int>() < 0 ? 0 : result["number"].as<int>();
+    } else {
+      config.max_ignored = 0;
+    }
     config.input_path = result["input"].as<string>();
     config.constraint_path = result["constraint"].as<string>();
     config.output_path = result["output"].as<string>();
@@ -99,7 +106,8 @@ int parse_options(int argc, char **argv) {
 
 VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdir, 
     const char* output_path, const char* symtab_path, const char* executable_path, 
-    bool append_output): log_path_(log_path), out_path_(output_path)
+    bool append_output, int max_ignored):
+    log_path_(log_path), out_path_(output_path), max_ignored_(max_ignored)
 {
   if (outdir != NULL) {
     out_dir_ = outdir; 
@@ -160,8 +168,11 @@ void VioletTraceAnalyzer::build_black_list() {
     black_list = badFunction->saddress;
 }
 
+
+
 void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
   double latency_diff_percent_threshold = 0.2;
+  int n = max_ignored_; // # of parameters skipped
 
   // diff of any pair-wise records in the cost table
   for (StateCostTable::iterator it = cost_table->begin(); it != cost_table->end(); ++it) {
@@ -184,59 +195,111 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
         continue;
       }
 
-      while (!first_constraints.empty()) {
-        ConstraintItem first_constraint = first_constraints.back();
-        ConstraintItem second_constraint = second_constraints.back();
-        first_constraints.pop_back();
-        second_constraints.pop_back();
-        if (first_constraint.value != second_constraint.value) {
-          analysis_log_ << "state " << it->first << "'is not compareable with" <<
-                        " state " << jt->first << endl;
-          is_comparable = false;
-          break;
+      ConstraintTrace first_combination, second_combination;
+
+      std::function<void(int, int)> make_comparison = [=, &make_comparison]
+                        (int oft, int k) mutable -> void {
+
+        if (k == 0)
+        {
+          is_comparable = true;
+
+          for (uint i = 0 ; i < first_combination.size(); ++i) {
+            ConstraintItem first_constraint = first_combination[i];
+            ConstraintItem second_constraint = second_combination[i];
+            if (first_constraint.value != second_constraint.value) {
+              analysis_log_ << "state " << it->first << "'is not compareable with" <<
+                            " state " << jt->first << endl;
+              is_comparable = false;
+              break;
+            }
+
+            if(first_constraint.variable_number != second_constraint.variable_number)
+              std::cout << "error\n";
+          }
+
+          if(!is_comparable)
+            return;
+
+
+          // print constraints
+          analysis_log_ <<  "state [" <<  first_record->id <<"]: target constraint = ";
+          if (first_record->target_constraints.size())
+            analysis_log_ << first_record->target_constraints[0].value;
+          else analysis_log_ << "null";
+          analysis_log_ << ", constraints = ";
+          for (auto i = first_constraints.begin(); i != first_constraints.end(); ++i) {
+            analysis_log_ << i->value << " ";
+          }
+          analysis_log_ <<  "\nstate [" <<  second_record->id <<"]: target constraint = ";
+          if (second_record->target_constraints.size())
+            analysis_log_ << second_record->target_constraints[0].value;
+          else analysis_log_ << "null";
+          analysis_log_ << ", constraints = ";
+          for (auto i = second_constraints.begin(); i != second_constraints.end(); ++i) {
+            analysis_log_ << i->value << " ";
+          }
+          analysis_log_ << endl;
+
+
+          if (it->second.execution_time > jt->second.execution_time) {
+            // ensure second_record always has larger execution time
+            analysis_log_ << "state " << it->first << "'s execution time " <<
+                          it->second.execution_time << " > state " << jt->first <<
+                          "'s execution_time " << jt->second.execution_time << endl;
+            first_record = &jt->second;
+            second_record = &it->second;
+          }
+
+          double latency_diff_percent = 1.0 * (second_record->execution_time -
+              first_record->execution_time) / first_record->execution_time;
+          analysis_log_ << "execution time for state " << first_record->id <<
+                        " and state " << second_record->id << " differ by " << latency_diff_percent << endl;
+          if (latency_diff_percent < latency_diff_percent_threshold) {
+            // latencies are similar, skip diff
+            return;
+          }
+
+          analysis_log_ << "comparing cost record for state " << first_record->id <<
+                        " and state " << second_record->id << endl;
+          FunctionTrace diff_trace;
+          // The result from dtl library is buggy: the computed diff trace can have hunk that
+          // is not only unordered but also incorrect w.r.t the original files.
+          // So we we use the gnu_diff_trace instead of dtl_diff_trace
+          gnu_diff_trace(first_record->id, second_record->id, first_record->trace,
+                         second_record->trace, diff_trace);
+          analysis_log_ << "obtained a diff trace of size " << diff_trace.size() << endl;
+          if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
+            analysis_log_ << "computed the diff latency for " <<
+                          second_record->trace.size() << " trace items " << endl;
+            compute_critical_path(second_record, first_record->id);
+            cout << "Successfully computed the differential critical path for state pair <"
+                 << first_record->id << "," << second_record->id << ">" << endl;
+          }
+
+          return;
         }
 
-        if(first_constraint.variable_number != second_constraint.variable_number)
-          std::cout << "error\n";
+        for (uint i = oft; i <= first_constraints.size() - k; ++i) {
+          first_combination.push_back(first_constraints[i]);
+          second_combination.push_back(second_constraints[i]);
+          make_comparison (i+1, k-1);
+          first_combination.pop_back();
+          second_combination.pop_back();
+        }
+
+      };
+
+      for (int i = 0; i <= n; ++i) {
+        uint k = first_constraints.size() - i;
+        if (k < 0 || k > first_constraints.size())
+          continue;
+        make_comparison(0, k);
       }
 
-      if(!is_comparable)
-        continue;
-
-      if (it->second.execution_time > jt->second.execution_time) {
-        // ensure second_record always has larger execution time
-        analysis_log_ << "state " << it->first << "'s execution time " << 
-          it->second.execution_time << " > state " << jt->first << 
-          "'s execution_time " << jt->second.execution_time << endl;
-        first_record = &jt->second;
-        second_record = &it->second;
-      }
-      double latency_diff_percent = 1.0 * (second_record->execution_time - 
-          first_record->execution_time) / first_record->execution_time;
-      analysis_log_ << "execution time for state " << first_record->id << 
-        " and state " << second_record->id << " differ by " << latency_diff_percent << endl;
-      if (latency_diff_percent < latency_diff_percent_threshold) {
-        // latencies are similar, skip diff
-        continue;
-      }
-      analysis_log_ << "comparing cost record for state " << first_record->id << 
-        " and state " << second_record->id << endl;
-      FunctionTrace diff_trace;
-      // The result from dtl library is buggy: the computed diff trace can have hunk that
-      // is not only unordered but also incorrect w.r.t the original files.
-      // So we we use the gnu_diff_trace instead of dtl_diff_trace
-      gnu_diff_trace(first_record->id, second_record->id, first_record->trace, 
-          second_record->trace, diff_trace);
-      analysis_log_ << "obtained a diff trace of size " << diff_trace.size() << endl;
-      if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
-        analysis_log_ << "computed the diff latency for " << 
-          second_record->trace.size() << " trace items " << endl;
-        compute_critical_path(second_record, first_record->id);
-        cout << "Successfully computed the differential critical path for state pair <" 
-          << first_record->id << "," << second_record->id << ">" << endl;
-      }
     }
   }
+
   for (auto record_iterator = cost_table->begin();
        record_iterator != cost_table->end(); ++record_iterator) {
     result_file_ << "[State " << record_iterator->first
@@ -574,7 +637,7 @@ int analyzer_main(int argc, char **argv) {
 
   VioletTraceAnalyzer analyzer("violet_trace_analysis.log", config.outdir.c_str(),
       config.output_path.c_str(), config.symtable_path.c_str(),
-      config.executable_path.c_str(), config.append_output);
+      config.executable_path.c_str(), config.append_output, config.max_ignored);
   if (!analyzer.init()) {
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);

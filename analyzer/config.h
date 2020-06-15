@@ -21,6 +21,7 @@ struct analyzer_config {
   std::string output_path;
   std::string outdir;
   std::string constraint_path;
+  int max_ignored;
 };
 
 #endif  // VIOLET_LOG_ANALYZER_CONFIG_H
