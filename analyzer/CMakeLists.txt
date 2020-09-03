@@ -6,7 +6,7 @@
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #
 
-add_executable(log_analyzer
+add_executable(trace_analyzer
     parser.cpp
     symtable.cpp
     analyzer.cpp

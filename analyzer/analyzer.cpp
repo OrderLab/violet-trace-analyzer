@@ -39,7 +39,7 @@ cxxopts::Options add_options() {
 
   options.add_options()
       ("i,input", "input file name", cxxopts::value<string>())
-      ("c, constraint", "constraint file name", cxxopts::value<string>())
+      ("c,constraint", "constraint file name", cxxopts::value<string>())
       ("e,executable", "path to the executable file", cxxopts::value<string>())
       ("s,symtable", "path to symbol table file of executable (produced from objdump)", cxxopts::value<string>())
       ("o,output", "output file name", cxxopts::value<string>())
@@ -82,8 +82,10 @@ int parse_options(int argc, char **argv) {
       config.max_ignored = 0;
     }
     config.input_path = result["input"].as<string>();
-    config.constraint_path = result["constraint"].as<string>();
     config.output_path = result["output"].as<string>();
+    if (result.count("constraint")) {
+      config.constraint_path = result["constraint"].as<string>();
+    }
     if (result.count("executable")) {
       config.executable_path = result["executable"].as<string>();
     }
@@ -623,11 +625,11 @@ int analyzer_main(int argc, char **argv) {
   TraceParserBase *parser;
   string log_ext = config.input_path.substr(config.input_path.size() - 4, 4);
   if (log_ext.compare(".txt") == 0) {
-    parser = new TraceLogParser(config.input_path,config.constraint_path);
+    parser = new TraceLogParser(config.input_path, config.constraint_path);
   } else {
     // if the input file ends with anything other than .txt, we will use
     // the binary trace parser.
-    parser = new TraceDatParser(config.input_path,config.constraint_path);
+    parser = new TraceDatParser(config.input_path, config.constraint_path);
   }
 
   if (!parser->parse(&cost_table)) {

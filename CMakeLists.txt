@@ -7,7 +7,7 @@
 #
 
 cmake_minimum_required(VERSION 3.0)
-project(log_analyzer)
+project(trace_analyzer)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
