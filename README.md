@@ -24,20 +24,21 @@ If you are using Clion, the IDE supports `.clang-format` style. Go to `Settings/
 
 ## Usage
 
-```
-$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -o result.txt
-
+```bash
+$ git clone https://github.com/OrderLab/violet-trace-analyzer.git
+$ cd violet-trace-analyzer
+$ mkdir build && cmake .. && make -j4
+$ build/bin/trace_analyzer -i test/LatencyTrace1_autocommit.dat -o result.txt
 
 # Include the path to the executable file; the result will use the symbol table 
 # in the executable to resolve the function addresses in critical path output. 
 
-$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -e ../projects/mysqld/mysqld -o result.txt
+$ build/bin/trace_analyzer -i test/LatencyTrace1_autocommit.dat -e ../projects/mysqld/mysqld -o result.txt
 
 # Use the specified symbol table file (objdump -C -t /path/to/executable) to 
 # output function name in critical path
-$ build/bin/log_analyzer -i test/LatencyTrace1_autocommit.dat -s test/mysqld.sym -o result.txt
+$ build/bin/trace_analyzer -i test/LatencyTrace1_autocommit.dat -s test/mysqld.sym -o result.txt
 ```
-
 
 For Python implementation:
 
@@ -46,9 +47,7 @@ $ py/analyzer.py -i $S2EDIR/projects/mysqld/s2e-last/debug.txt -o autocommit_tra
 ```
 
 
-
 ## TODO
 
-* C++ is probably not the best choice here for fast prototype. Log parsing and analysis is what Python is super good at.
-
-- [ ] The violet plugin should write the analysis output to a structured and separate file like how the ExecutionTracer plugin outputs a binary protobuf file.
+- [x] C++ is probably not the best choice here for fast prototype. Log parsing and analysis is what Python is super good at.
+- [x] The violet plugin should write the analysis output to a structured and separate file like how the ExecutionTracer plugin outputs a binary protobuf file.
