@@ -30,6 +30,7 @@ class VioletTraceAnalyzer {
     ~VioletTraceAnalyzer();
 
     bool init();
+    void cleanup();
 
     bool dtl_diff_trace(int first_trace_id, int second_trace_id,
         FunctionTrace &first_trace, FunctionTrace &second_trace,

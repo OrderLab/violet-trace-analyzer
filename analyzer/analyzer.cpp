@@ -129,10 +129,11 @@ VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdi
 
 bool VioletTraceAnalyzer::init()
 {
-  int ret = mkdir(out_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == 0;
+  int ret = mkdir(out_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
   if (ret != 0) {
     if (errno == EEXIST) // ignore dir exists error
       return true;
+    perror("Error in creating output directory");
     return false;
   }
   if (executable_path_.size() > 0) {
@@ -156,10 +157,15 @@ bool VioletTraceAnalyzer::init()
   return true;
 }
 
-VioletTraceAnalyzer::~VioletTraceAnalyzer()
+void VioletTraceAnalyzer::cleanup()
 {
   analysis_log_.close();
   result_file_.close();
+}
+
+VioletTraceAnalyzer::~VioletTraceAnalyzer()
+{
+  cleanup();
 }
 
 void VioletTraceAnalyzer::build_black_list() {
@@ -641,10 +647,12 @@ int analyzer_main(int argc, char **argv) {
       config.output_path.c_str(), config.symtable_path.c_str(),
       config.executable_path.c_str(), config.append_output, config.max_ignored);
   if (!analyzer.init()) {
+    analyzer.cleanup();
     cerr << "Abort: failed to initialize violet trace analyzer" << endl;
     exit(1);
   }
   analyzer.build_black_list();
   analyzer.analyze_cost_table(&cost_table);
+  analyzer.cleanup();
   return 0;
 }
