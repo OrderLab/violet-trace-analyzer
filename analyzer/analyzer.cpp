@@ -593,7 +593,7 @@ void VioletTraceAnalyzer::compute_critical_path(StateCostRecord *record, int bas
       break;
     const FunctionTraceItem &result = record->trace[max_idx];
     result_file_ << "\t=> ";
-    printFunctionTraceItem(result_file_, result);
+    printFunctionTraceItem(result_file_, result, true);
     result_file_ << endl;
     parent_id = result.activity_id;
   }
