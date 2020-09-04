@@ -131,10 +131,10 @@ bool VioletTraceAnalyzer::init()
 {
   int ret = mkdir(out_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
   if (ret != 0) {
-    if (errno == EEXIST) // ignore dir exists error
-      return true;
-    perror("Error in creating output directory");
-    return false;
+    if (errno != EEXIST) {// ignore dir exists error
+      perror("Error in creating output directory");
+      return false;
+    }
   }
   if (executable_path_.size() > 0) {
     string filename = executable_path_.substr(executable_path_.find_last_of('/') + 1);
@@ -152,6 +152,10 @@ bool VioletTraceAnalyzer::init()
     analysis_log_ << "Parsing symbol table for executable from " << symtab_path_ << "...";
     bool success = SymbolTable::parse(symtab_path_, &symbol_table_);
     analysis_log_ << (success ? "Succeeded" : "Failed") << endl;
+    if (success) {
+      cout << "Successfully parsed " << symbol_table_.size() << " symbols from " 
+        << symtab_path_ << endl;
+    }
     return success;
   }
   return true;
