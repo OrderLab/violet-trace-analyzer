@@ -23,7 +23,7 @@ void TraceParserBase::add_trace_item(StateCostTable *table, int state_id,
     record.syscall_count = 0;
     record.instruction_count = 0;
     record.id = state_id;
-    if (item.caller == 0) { // 0x0
+    if (item.activity_id == 0) { // 0x0
       record.execution_time = item.execution_time;
     } else {
       record.execution_time = 0;
@@ -34,7 +34,7 @@ void TraceParserBase::add_trace_item(StateCostTable *table, int state_id,
     assert(table->count(state_id) == 1);
     StateCostRecord &record = (*table)[state_id];
     record.id = state_id;
-    if (item.caller == 0) { // 0x0
+    if (item.activity_id == 0) { // 0x0
       record.execution_time += item.execution_time;
     }
     record.trace.push_back(item);
