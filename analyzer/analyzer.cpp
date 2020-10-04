@@ -125,7 +125,11 @@ VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdi
     result_file_.open(output_path, fstream::app);
   else
     result_file_.open(output_path);
-  impact_table_file_.open("/Users/cherrypie/Desktop/research/s2e-log-analyzer/impact_table.csv");
+  /* use output_path dir as base dir for impact_table.csv */
+  string output_path_s (output_path), output_path_dir;
+  output_path_dir = output_path_s.find('/') != string::npos ?
+      output_path_s.substr(0, output_path_s.find_last_of('/')) : "";
+  impact_table_file_.open(output_path_dir + "/impact_table.csv");
   printImpactTableHead();
 }
 
@@ -217,7 +221,6 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
           if(!is_comparable)
             return;
 
-
           // print constraints
           analysis_log_ <<  "state [" <<  first_record->id <<"]: target constraint = ";
           if (first_record->target_constraints.size())
@@ -236,7 +239,6 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
             analysis_log_ << i->value << " ";
           }
           analysis_log_ << endl;
-
 
           if (it->second.execution_time > jt->second.execution_time) {
             // ensure second_record always has larger execution time
@@ -268,6 +270,7 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
           if (compute_diff_latency(first_record->trace, second_record->trace, diff_trace)) {
             analysis_log_ << "computed the diff latency for " <<
                           second_record->trace.size() << " trace items " << endl;
+
             compute_critical_path(second_record, first_record->id);
             cout << "Successfully computed the differential critical path for state pair <"
                  << first_record->id << "," << second_record->id << ">" << endl;
@@ -608,38 +611,42 @@ void VioletTraceAnalyzer::printRecordImpactTableRow (StateCostRecord *record)
 {
   impact_table_file_ << record->id << ",";
 
-  for (auto kt = record->target_constraints.begin();
-  kt != record->target_constraints.end(); ++kt) {
+  bool print_target = false;
+
+  for (auto kt = record->target_constraints.begin(); kt != record->target_constraints.end(); ++kt) {
+    print_target = true;
+
+    if (kt != record->target_constraints.begin())
+      impact_table_file_ << "&&";
+
     impact_table_file_ << record->target_constraints_name.find(kt->variable_number)->second << "==";
     size_t v_length = record->target_constraints_value.find(kt->variable_number)->second.size();
     string v_string (record->target_constraints_value.find(kt->variable_number)->second.begin(),
                      record->target_constraints_value.find(kt->variable_number)->second.end());
-    if (v_length == 4 || v_length == 8)
+
+    if (v_length == 1 || v_length == 4 || v_length == 8)
       impact_table_file_ << kt->value;
     else
       impact_table_file_ << v_string;
-    if (std::next(kt) != record->target_constraints.end())
-      impact_table_file_ << "&&";
-    else
-      impact_table_file_ << ",";
   }
-  for (auto kt = record->constraints.begin();
-  kt != record->constraints.end(); ++kt) {
+
+  for (auto kt = record->constraints.begin(); kt != record->constraints.end(); ++kt) {
+    if (print_target && kt == record->constraints.begin())
+      impact_table_file_ << "&&";
+    else if (kt != record->constraints.begin())
+      impact_table_file_ << "&&";
+
     impact_table_file_ << record->constraints_name.find(kt->variable_number)->second << "==";
     size_t v_length = record->constraints_value.find(kt->variable_number)->second.size();
     string v_string (record->constraints_value.find(kt->variable_number)->second.begin(),
                      record->constraints_value.find(kt->variable_number)->second.end());
-    if (v_length == 4 || v_length == 8)
+    if (v_length == 1 || v_length == 4 || v_length == 8)
       impact_table_file_ << kt->value;
     else
       impact_table_file_ << v_string;
-    if (std::next(kt) != record->constraints.end())
-      impact_table_file_ << "&&";
-    else
-      impact_table_file_ << ",";
   }
 
-
+  impact_table_file_ << ",";
 
   // TODO check if there is a IO tracer.dat
   impact_table_file_ << "IO=>" << record->io_trace.read_bytes << " " << record->io_trace.read_cnt << " "

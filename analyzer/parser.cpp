@@ -46,6 +46,7 @@ void TraceParserBase::add_constraint_item(StateCostTable *table,ConstraintItem &
 {
   if (!table->count(item.id)) {
     StateCostRecord record;
+    record.id = item.id;
     if (item.is_target) {
       record.target_constraints.push_back(item);
       record.target_constraints_name.insert(std::pair<int, std::string>(item.variable_number, item_name));
@@ -74,16 +75,17 @@ void TraceParserBase::add_constraint_item(StateCostTable *table,ConstraintItem &
 void TraceParserBase::add_io_item(StateCostTable *table, IOItem &item)
 {
   if (!table->count(item.id)) {
-    StateCostRecord record;
-    record.io_trace.read_cnt = item.read_cnt;
-    record.io_trace.read_bytes = item.read_bytes;
-    record.io_trace.pread_cnt = item.pread_cnt;
-    record.io_trace.pread_bytes = item.pread_bytes;
-    record.io_trace.write_cnt = item.write_cnt;
-    record.io_trace.write_bytes = item.write_bytes;
-    record.io_trace.pwrite_cnt = item.pwrite_cnt;
-    record.io_trace.pwrite_bytes = item.pwrite_bytes;
-    (*table)[item.id] = record;
+//    StateCostRecord record;
+//    record.id = item.id;
+//    record.io_trace.read_cnt = item.read_cnt;
+//    record.io_trace.read_bytes = item.read_bytes;
+//    record.io_trace.pread_cnt = item.pread_cnt;
+//    record.io_trace.pread_bytes = item.pread_bytes;
+//    record.io_trace.write_cnt = item.write_cnt;
+//    record.io_trace.write_bytes = item.write_bytes;
+//    record.io_trace.pwrite_cnt = item.pwrite_cnt;
+//    record.io_trace.pwrite_bytes = item.pwrite_bytes;
+//    (*table)[item.id] = record;
   } else {
     assert(table->count(item.id) == 1);
     StateCostRecord &record = (*table)[item.id];
@@ -245,6 +247,7 @@ bool TraceDatParser::parse(StateCostTable *table)
     ConstraintValue constraint_value;
 
     dat_file2.read((char *)&constraint_item,sizeof(constraint_item));
+
     size_t length;
     unsigned char c;
     dat_file2.read((char *)&length,sizeof(length));
@@ -261,6 +264,7 @@ bool TraceDatParser::parse(StateCostTable *table)
     dat_file2.read(&constraint_name[0], length);
     if (!dat_file2)
       break;
+
     add_constraint_item(table,constraint_item,constraint_name,constraint_value);
   }
 
