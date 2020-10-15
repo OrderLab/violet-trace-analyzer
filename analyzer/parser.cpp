@@ -22,6 +22,7 @@ void TraceParserBase::add_trace_item(StateCostTable *table, int state_id,
     StateCostRecord record;
     record.syscall_count = 0;
     record.instruction_count = 0;
+    record.io_trace.yes = false;
     record.id = state_id;
     if (item.activity_id == 0) { // 0x0
       record.execution_time = item.execution_time;
@@ -41,22 +42,53 @@ void TraceParserBase::add_trace_item(StateCostTable *table, int state_id,
   }
 }
 
-void TraceParserBase::add_constraint_item(StateCostTable *table,ConstraintItem &item)
+void TraceParserBase::add_io_item(StateCostTable *table, IOItem &item)
+{
+  if (!table->count(item.id)) {}
+  else {
+    assert(table->count(item.id) == 1);
+    StateCostRecord &record = (*table)[item.id];
+    record.io_trace.yes = true;
+    record.io_trace.read_cnt = item.read_cnt;
+    record.io_trace.read_bytes = item.read_bytes;
+    record.io_trace.pread_cnt = item.pread_cnt;
+    record.io_trace.pread_bytes = item.pread_bytes;
+    record.io_trace.write_cnt = item.write_cnt;
+    record.io_trace.write_bytes = item.write_bytes;
+    record.io_trace.pwrite_cnt = item.pwrite_cnt;
+    record.io_trace.pwrite_bytes = item.pwrite_bytes;
+  }
+}
+
+void TraceParserBase::add_constraint_item(StateCostTable *table,ConstraintItem &item, std::string item_name,
+                                          ConstraintValue &item_value)
 {
   if (!table->count(item.id)) {
     StateCostRecord record;
-    if (item.is_target)
+    record.id = item.id;
+    record.io_trace.yes = false;
+    if (item.is_target) {
       record.target_constraints.push_back(item);
-    else
+      record.target_constraints_name.insert(std::pair<int, std::string>(item.variable_number, item_name));
+      record.target_constraints_value.insert(std::pair<int, ConstraintValue>(item.variable_number, item_value));
+    } else {
       record.constraints.push_back(item);
+      record.constraints_name.insert(std::pair<int, std::string>(item.variable_number, item_name));
+      record.constraints_value.insert(std::pair<int, ConstraintValue>(item.variable_number, item_value));
+    }
     (*table)[item.id] = record;
   } else {
     assert(table->count(item.id) == 1);
     StateCostRecord &record = (*table)[item.id];
-    if (item.is_target)
+    if (item.is_target) {
       record.target_constraints.push_back(item);
-    else
+      record.target_constraints_name.insert(std::pair<int, std::string>(item.variable_number, item_name));
+      record.target_constraints_value.insert(std::pair<int, ConstraintValue>(item.variable_number, item_value));
+    } else {
       record.constraints.push_back(item);
+      record.constraints_name.insert(std::pair<int, std::string>(item.variable_number, item_name));
+      record.constraints_value.insert(std::pair<int, ConstraintValue>(item.variable_number, item_value));
+    }
   }
 }
 
@@ -162,6 +194,7 @@ bool TraceDatParser::parse(StateCostTable *table)
   // Must open the dat file in binary mode
   std::ifstream dat_file(m_fileName, std::ios::in | std::ios::binary);
   std::ifstream dat_file2(m_constraintFileName, std::ios::in | std::ios::binary);
+  std::ifstream dat_file3(m_ioFileName, std::ios::in | std::ios::binary);
 
   if (!dat_file.is_open()) {
     std::cerr << "Unable to open file at " << m_fileName << std::endl;
@@ -203,11 +236,36 @@ bool TraceDatParser::parse(StateCostTable *table)
 
   while(dat_file2.good()) {
     ConstraintItem constraint_item;
+    ConstraintValue constraint_value;
 
     dat_file2.read((char *)&constraint_item,sizeof(constraint_item));
+
+    size_t length;
+    unsigned char c;
+    dat_file2.read((char *)&length,sizeof(length));
     if (!dat_file2)
       break;
-    add_constraint_item(table,constraint_item);
+    while (length--) {
+      dat_file2.read((char *)&c, 1);
+      constraint_value.push_back(c);
+    }
+    dat_file2.read((char *)&length,sizeof(length));
+    if (!dat_file2)
+      break;
+    std::string constraint_name(length, '\0');
+    dat_file2.read(&constraint_name[0], length);
+    if (!dat_file2)
+      break;
+
+    add_constraint_item(table,constraint_item,constraint_name,constraint_value);
+  }
+
+  while(dat_file3.good()) {
+    IOItem io_item;
+    dat_file3.read((char *)&io_item,sizeof(io_item));
+    if (!dat_file3)
+      break;
+    add_io_item(table,io_item);
   }
 
   std::cout << "Successfully parsed " << parsed_cnt << " trace records from " << m_fileName << std::endl;

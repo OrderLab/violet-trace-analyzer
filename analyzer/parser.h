@@ -41,22 +41,43 @@ typedef struct _constraintRecord {
   bool is_target;
 } ConstraintItem;
 
+typedef std::vector<unsigned char> ConstraintValue;
+
+typedef struct _ioRecord {
+  int id;
+  uint64_t read_cnt;
+  uint64_t read_bytes;
+  uint64_t write_cnt;
+  uint64_t write_bytes;
+  uint64_t pread_cnt;
+  uint64_t pread_bytes;
+  uint64_t pwrite_cnt;
+  uint64_t pwrite_bytes;
+} IOItem;
+
 // The base class for latency trace file parser
 class TraceParserBase {
   protected:
     std::string m_fileName;
     std::string m_constraintFileName;
+    std::string m_ioFileName;
 
   public:
     TraceParserBase(const std::string &fileName, const std::string &constraintFileName):
       m_fileName(fileName),m_constraintFileName(constraintFileName)
     {
     }
+    TraceParserBase(const std::string &fileName, const std::string &constraintFileName, const std::string &ioFileName):
+        m_fileName(fileName),m_constraintFileName(constraintFileName), m_ioFileName(ioFileName)
+    {
+    }
 
     virtual bool parse(StateCostTable *table) = 0;
     virtual void add_trace_item(StateCostTable *table, int state_id, 
         FunctionTraceItem &item);
-    virtual void add_constraint_item(StateCostTable *table, ConstraintItem &item);
+    virtual void add_constraint_item(StateCostTable *table, ConstraintItem &item, std::string item_name,
+                                     ConstraintValue &item_value);
+    virtual void add_io_item(StateCostTable *table, IOItem &item);
 };
 
 // Parse the violet plugin output from the S2E log debug.txt
@@ -88,8 +109,8 @@ class TraceLogParser: public TraceParserBase {
 // This is the binary latency trace file data parser
 class TraceDatParser: public TraceParserBase {
   public:
-    TraceDatParser(const std::string &fileName, const std::string &constraintFileName):
-      TraceParserBase(fileName,constraintFileName)
+    TraceDatParser(const std::string &fileName,const std::string constraintFileName,const std::string &ioFileName):
+        TraceParserBase(fileName,constraintFileName,ioFileName)
     {
     }
 

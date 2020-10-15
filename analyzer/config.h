@@ -21,6 +21,7 @@ struct analyzer_config {
   std::string output_path;
   std::string outdir;
   std::string constraint_path;
+  std::string io_path;
   int max_ignored;
 };
 

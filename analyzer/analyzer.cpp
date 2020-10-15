@@ -46,6 +46,7 @@ cxxopts::Options add_options() {
       ("d,outdir", "output directory", cxxopts::value<string>())
       ("append", "append to output file", cxxopts::value<bool>())
       ("n,number","max number constraints ignored",cxxopts::value<int>())
+      ("a,io","io tracer file name",cxxopts::value<string>())
       ("help", "Print help message");
 
   return options;
@@ -86,6 +87,9 @@ int parse_options(int argc, char **argv) {
     if (result.count("constraint")) {
       config.constraint_path = result["constraint"].as<string>();
     }
+    if (result.count("io")) {
+      config.io_path = result["io"].as<string>();
+    }
     if (result.count("executable")) {
       config.executable_path = result["executable"].as<string>();
     }
@@ -125,6 +129,12 @@ VioletTraceAnalyzer::VioletTraceAnalyzer(const char* log_path, const char* outdi
     result_file_.open(output_path, fstream::app);
   else
     result_file_.open(output_path);
+  /* use output_path dir as base dir for impact_table.csv */
+  string output_path_s (output_path), output_path_dir;
+  output_path_dir = output_path_s.find('/') != string::npos ?
+                    output_path_s.substr(0, output_path_s.find_last_of('/')) : "";
+  impact_table_file_.open(output_path_dir + "/impact_table.csv");
+  printImpactTableHead();
 }
 
 bool VioletTraceAnalyzer::init()
@@ -165,6 +175,7 @@ void VioletTraceAnalyzer::cleanup()
 {
   analysis_log_.close();
   result_file_.close();
+  impact_table_file_.close();
 }
 
 VioletTraceAnalyzer::~VioletTraceAnalyzer()
@@ -321,9 +332,12 @@ void VioletTraceAnalyzer::analyze_cost_table(StateCostTable *cost_table) {
            << record_iterator->second.syscall_count
            << ", the total execution time "
            << record_iterator->second.execution_time << "ms\n";
+    printRecordImpactTableRow(&record_iterator->second);
   }
   analysis_log_.close();
   result_file_.close();
+  //TODO close impact table file???
+  impact_table_file_.close();
   cout << "Analysis log is written to violet_trace_analysis.log." << endl
     << "The result is written to " << out_path_ << endl
     << "Intermediate data is written to directory '" << out_dir_ << "'" << endl;
@@ -623,6 +637,58 @@ ostream& VioletTraceAnalyzer::printFunctionTraceItem (ostream &o,
   return o << t;
 }
 
+void VioletTraceAnalyzer::printRecordImpactTableRow (StateCostRecord *record)
+{
+  impact_table_file_ << record->id << ",";
+
+  bool print_target = false;
+
+  for (auto kt = record->target_constraints.begin(); kt != record->target_constraints.end(); ++kt) {
+    print_target = true;
+
+    if (kt != record->target_constraints.begin())
+      impact_table_file_ << "&&";
+
+    impact_table_file_ << record->target_constraints_name.find(kt->variable_number)->second << "==";
+    size_t v_length = record->target_constraints_value.find(kt->variable_number)->second.size();
+    string v_string (record->target_constraints_value.find(kt->variable_number)->second.begin(),
+                     record->target_constraints_value.find(kt->variable_number)->second.end());
+
+    if (v_length == 1 || v_length == 4 || v_length == 8)
+      impact_table_file_ << kt->value;
+    else
+      impact_table_file_ << v_string;
+  }
+
+  for (auto kt = record->constraints.begin(); kt != record->constraints.end(); ++kt) {
+    if (print_target && kt == record->constraints.begin())
+      impact_table_file_ << "&&";
+    else if (kt != record->constraints.begin())
+      impact_table_file_ << "&&";
+
+    impact_table_file_ << record->constraints_name.find(kt->variable_number)->second << "==";
+    size_t v_length = record->constraints_value.find(kt->variable_number)->second.size();
+    string v_string (record->constraints_value.find(kt->variable_number)->second.begin(),
+                     record->constraints_value.find(kt->variable_number)->second.end());
+    if (v_length == 1 || v_length == 4 || v_length == 8)
+      impact_table_file_ << kt->value;
+    else
+      impact_table_file_ << v_string;
+  }
+  impact_table_file_ << ",";
+
+  if (record->io_trace.yes) {
+    impact_table_file_ << "IO=>" << record->io_trace.read_bytes << " " << record->io_trace.read_cnt << " "
+                       << record->io_trace.write_bytes << " " << record->io_trace.write_cnt << " "
+                       << record->io_trace.pread_bytes << " "
+                       << record->io_trace.pread_cnt << " " << record->io_trace.pwrite_bytes << " "
+                       << record->io_trace.pwrite_cnt << ";";
+  }
+  impact_table_file_ << "ET=>" << record->execution_time << "ms";
+  impact_table_file_ << ";IC=>" << record->instruction_count;
+  impact_table_file_ << ";SC=>" << record->syscall_count;
+  impact_table_file_ << "\n";
+}
   
 int analyzer_main(int argc, char **argv) {
   string line;
@@ -639,7 +705,7 @@ int analyzer_main(int argc, char **argv) {
   } else {
     // if the input file ends with anything other than .txt, we will use
     // the binary trace parser.
-    parser = new TraceDatParser(config.input_path, config.constraint_path);
+    parser = new TraceDatParser(config.input_path,config.constraint_path, config.io_path);
   }
 
   if (!parser->parse(&cost_table)) {
